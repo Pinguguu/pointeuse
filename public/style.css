@@ -57,6 +57,10 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .slot label svg { width: 20px; height: 20px; }
 .slot select, .tsel { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .slot select { font-size: 26px; font-weight: 500; padding: 6px 10px; width: 100%; }
+.shifts { display: grid; gap: 10px; }
+.badge-cut { justify-self: start; border: 1px dashed var(--line); background: none; color: var(--accent); font-weight: 600; padding: 8px 14px; border-radius: 10px; }
+.badge-cut:hover { border-color: var(--accent); }
+.badge-cut[aria-expanded="true"] { color: var(--muted); }
 .badge-preview { color: var(--muted); min-height: 1.5em; }
 .badge-preview b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
 .badge-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
@@ -177,16 +181,17 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .times-m { display: none; }
 
 /* Planning éditeur */
-.prow { display: grid; grid-template-columns: 9em 1fr 1fr auto 6em; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.prow .dn { text-transform: capitalize; font-weight: 500; }
-.prow input[type="time"] { font-family: var(--mono); padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); width: 100%; min-width: 0; }
+.prow { display: grid; grid-template-columns: 9em 1fr 1fr auto 6em; grid-template-areas: "dn a b checks tot"; gap: 8px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.prow.cut { grid-template-areas: "dn a b checks tot" ". a2 b2 . ."; }
+.prow .dn { grid-area: dn; text-transform: capitalize; font-weight: 500; }
+.prow .a { grid-area: a; } .prow .b { grid-area: b; } .prow .a2 { grid-area: a2; } .prow .b2 { grid-area: b2; }
+.prow .checks { grid-area: checks; display: flex; gap: 12px; } .prow .checks .check { padding: 0; }
+.prow .tot { grid-area: tot; text-align: right; }
 .prow input:disabled, .prow select:disabled { opacity: .4; }
 .prow select { width: 100%; min-width: 0; }
-.prow .tot { text-align: right; }
 @media (max-width: 560px) {
-  .prow { grid-template-columns: 1fr 1fr auto; grid-template-areas: "dn dn tot" "a b off"; }
-  .prow .dn { grid-area: dn; } .prow .tot { grid-area: tot; }
-  .prow .a { grid-area: a; } .prow .b { grid-area: b; } .prow .check { grid-area: off; padding: 0; }
+  .prow { grid-template-columns: 1fr 1fr; grid-template-areas: "dn tot" "a b" "checks checks"; }
+  .prow.cut { grid-template-areas: "dn tot" "a b" "a2 b2" "checks checks"; }
 }
 .ptotal { display: flex; justify-content: space-between; font-weight: 600; padding-top: 4px; }
 
@@ -213,3 +218,4 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .acct-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sync { font-size: 13px; color: var(--muted); }
 .sync.pending { color: var(--off); }
+.field label .opt { color: var(--muted); font-weight: 400; }

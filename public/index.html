@@ -53,15 +53,28 @@
       <div class="badge-date" id="bDate">—</div>
       <div class="badge-clock" id="bClock" aria-live="off">--:--</div>
     </div>
-    <div class="slots">
-      <div class="slot in">
-        <label for="bInSel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg>Arrivée</label>
-        <select id="bInSel"></select>
+    <div class="shifts">
+      <div class="slots">
+        <div class="slot in">
+          <label for="bInSel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg>Arrivée</label>
+          <select id="bInSel"></select>
+        </div>
+        <div class="slot out">
+          <label for="bOutSel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 17l5-5-5-5"/><path d="M19 12H7"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg><span id="bOutLbl">Départ</span></label>
+          <select id="bOutSel"></select>
+        </div>
       </div>
-      <div class="slot out">
-        <label for="bOutSel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 17l5-5-5-5"/><path d="M19 12H7"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>Départ</label>
-        <select id="bOutSel"></select>
+      <div class="slots" id="bCutRow" hidden>
+        <div class="slot in">
+          <label for="bIn2Sel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/></svg>Reprise</label>
+          <select id="bIn2Sel"></select>
+        </div>
+        <div class="slot out">
+          <label for="bOut2Sel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 17l5-5-5-5"/><path d="M19 12H7"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>Départ</label>
+          <select id="bOut2Sel"></select>
+        </div>
       </div>
+      <button type="button" class="badge-cut" id="bCut" aria-expanded="false">Ajouter une coupure</button>
     </div>
     <div class="badge-preview" id="bPreview"></div>
     <div class="badge-actions">

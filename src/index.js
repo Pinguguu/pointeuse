@@ -263,13 +263,22 @@ function cleanDoc(id, body) {
   for (const [ds, raw] of Object.entries(src).slice(0, 40)) {
     if (!DAY_RE.test(ds) || (prefix && !ds.startsWith(prefix + '-')) || !raw || typeof raw !== 'object') continue;
     const e = {};
+    // Coupure : second service in2 → out2 (pointage) ou start2 → end2 (planning), seulement après un premier service.
     if (prefix) {
       if (raw.off === true) e.off = true;
-      else { if (time(raw.in)) e.in = raw.in; if (time(raw.out) && e.in) e.out = raw.out; }
+      else {
+        if (time(raw.in)) e.in = raw.in;
+        if (time(raw.out) && e.in) e.out = raw.out;
+        if (time(raw.in2) && e.out) e.in2 = raw.in2;
+        if (time(raw.out2) && e.in2) e.out2 = raw.out2;
+      }
       if (typeof raw.note === 'string' && raw.note.trim()) e.note = raw.note.trim().slice(0, 80);
     } else {
       if (raw.off === true) e.off = true;
-      else if (time(raw.start) && time(raw.end)) { e.start = raw.start; e.end = raw.end; }
+      else if (time(raw.start) && time(raw.end)) {
+        e.start = raw.start; e.end = raw.end;
+        if (time(raw.start2) && time(raw.end2)) { e.start2 = raw.start2; e.end2 = raw.end2; }
+      }
     }
     if (Object.keys(e).length) days[ds] = e;
   }

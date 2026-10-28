@@ -22,12 +22,26 @@
 
   const span = (a, b) => { let x = toMin(b) - toMin(a); if (x < 0) x += 1440; return x; };
   // Pause comprise dans les horaires (restauration) : temps travaillé = arrivée → départ, rien n'est déduit.
+  // Une journée peut avoir une coupure : premier service in → out, puis second service in2 → out2.
+  const segs = e => [[e.in, e.out], [e.in2, e.out2]].filter(([a]) => a);
+  const openShift = e => !!e && !e.off && ((e.in && !e.out) || (e.in2 && !e.out2));
+  const lastOut = e => e.in2 ? e.out2 : e.out;
+  const timesText = e => segs(e).map(([a, b]) => `${a} – ${b || "…"}`).join(" · ");
+  // Un service pas encore terminé compte jusqu'à maintenant (live) ; sinon seuls les services complets comptent.
   function worked(e, live) {
     if (!e || e.off || !e.in) return null;
-    let out = e.out; if (!out) { if (!live) return null; out = hm(now()); }
-    return span(e.in, out);
+    let t = 0, any = false;
+    for (const [a, b] of segs(e)) {
+      const o = b || (live ? hm(now()) : null);
+      if (o) { t += span(a, o); any = true; }
+    }
+    return any ? t : null;
   }
-  function planned(p) { if (!p || p.off || !p.start || !p.end) return null; return span(p.start, p.end); }
+  function planned(p) {
+    if (!p || p.off || !p.start || !p.end) return null;
+    return span(p.start, p.end) + (p.start2 && p.end2 ? span(p.start2, p.end2) : 0);
+  }
+  const planText = p => `${p.start} – ${p.end}${p.start2 && p.end2 ? ` · ${p.start2} – ${p.end2}` : ""}`;
   const entry = ds => (S.months[ds.slice(0, 7)] || {})[ds];
   const planFor = ds => (S.plans[ymd(monday(parse(ds)))] || {})[ds];
 
@@ -216,35 +230,78 @@
   }
 
   // ---------- Écran de pointage ----------
-  let badgeTouched = false;
+  let badgeTouched = false, cutOn = false;
   function tickBadge() {
     const d = now();
     $("bClock").innerHTML = `${hm(d)}<span class="sec">${pad(d.getSeconds())}</span>`;
     $("bDate").textContent = fr(d, { weekday: "long", day: "numeric", month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase());
   }
+  const nowAfter = t => { const r = roundQ(hm(now())); return t && toMin(r) > toMin(t) ? r : ""; };
+  // Préremplissage : ce qui est déjà pointé aujourd'hui, sinon le planning, sinon l'heure qu'il est.
   function fillBadgeSelects() {
-    const ds = ymd(now()), e = entry(ds) || {}, p = planFor(ds) || {};
-    const vIn = e.in || (p.start && !p.off ? p.start : lastArrival());
-    let vOut = e.out || "";
-    if (!vOut) { const r = roundQ(hm(now())); vOut = toMin(r) > toMin(vIn) ? r : (p.end && !p.off ? p.end : ""); }
+    const ds = ymd(now()), e = entry(ds) || {}, p = (planFor(ds) && !planFor(ds).off) ? planFor(ds) : {};
+    cutOn = !!(e.in2 || (!e.out2 && p.start2 && (!e.out || e.out === p.end)));
+    const vIn = e.in || p.start || lastArrival();
+    let vOut, vIn2 = "", vOut2 = "";
+    if (cutOn) {
+      vOut = e.out || p.end || "";
+      vIn2 = e.in2 || p.start2 || "";
+      vOut2 = e.out2 || nowAfter(vIn2) || p.end2 || "";
+    } else vOut = e.out || nowAfter(vIn) || p.end || "";
+    setBadgeValues(vIn, vOut, vIn2, vOut2);
+  }
+  function setBadgeValues(vIn, vOut, vIn2, vOut2) {
     $("bInSel").innerHTML = slotOptions(vIn);
-    $("bOutSel").innerHTML = slotOptions(vOut, "Pas encore parti");
+    $("bOutSel").innerHTML = slotOptions(vOut, cutOn ? "Pas encore" : "Pas encore parti");
+    $("bIn2Sel").innerHTML = slotOptions(vIn2, "Pas encore repris");
+    $("bOut2Sel").innerHTML = slotOptions(vOut2, "Pas encore parti");
+  }
+  const badgeEntry = () => {
+    const v = id => $(id).value || null;
+    const e = { in: v("bInSel"), out: v("bOutSel") };
+    if (cutOn) { if (v("bIn2Sel")) e.in2 = v("bIn2Sel"); if (v("bOut2Sel")) e.out2 = v("bOut2Sel"); }
+    return e;
+  };
+  // Message d'erreur si les horaires ne se suivent pas, sinon null.
+  function shiftError(e) {
+    if (e.out2 && !e.in2) return "Indiquez l'heure de reprise.";
+    if (e.in2 && !e.out) return "Indiquez l'heure de début de la coupure.";
+    if (e.in2 && toMin(e.out) >= toMin(e.in) && toMin(e.in2) <= toMin(e.out)) return "La reprise doit être après le début de la coupure.";
+    return null;
   }
   function renderBadge() {
     const e = entry(ymd(now())) || {};
     if (!badgeTouched) fillBadgeSelects();
-    const vIn = $("bInSel").value, vOut = $("bOutSel").value;
-    $("bPreview").innerHTML = vIn && vOut ? `Temps travaillé : <b>${dur(worked({ in: vIn, out: vOut }))}</b>` : "Vous pouvez enregistrer l'arrivée seule et compléter le départ plus tard.";
-    $("bStatus").textContent = e.off ? "Aujourd'hui est marqué comme jour off." : e.in && e.out ? `Déjà enregistré aujourd'hui : ${e.in} – ${e.out}.` : e.in ? `Arrivée déjà enregistrée à ${e.in}.` : "";
+    $("bCutRow").hidden = !cutOn;
+    $("bCut").textContent = cutOn ? "Retirer la coupure" : "Ajouter une coupure";
+    $("bCut").setAttribute("aria-expanded", cutOn);
+    $("bOutLbl").textContent = cutOn ? "Coupure" : "Départ";
+    const b = badgeEntry(), err = shiftError(b);
+    $("bPreview").innerHTML = err ? `<span class="err">${err}</span>`
+      : !b.out ? "Vous pouvez enregistrer l'arrivée seule et compléter le reste plus tard."
+      : cutOn && !b.in2 ? `Premier service : <b>${dur(worked(b))}</b>. Vous pourrez ajouter la reprise plus tard.`
+      : `Temps travaillé : <b>${dur(worked(b))}</b>${b.in2 ? ` (${timesText(b)})` : ""}`;
+    $("bSave").disabled = !!err;
+    $("bStatus").textContent = e.off ? "Aujourd'hui est marqué comme jour off." : e.in ? `Déjà enregistré aujourd'hui : ${timesText(e)}.` : "";
   }
-  ["bInSel", "bOutSel"].forEach(id => $(id).addEventListener("change", () => { badgeTouched = true; renderBadge(); }));
+  ["bInSel", "bOutSel", "bIn2Sel", "bOut2Sel"].forEach(id => $(id).addEventListener("change", () => { badgeTouched = true; renderBadge(); }));
+  $("bCut").onclick = () => {
+    // Ajouter : l'heure de départ choisie devient la fin du second service. Retirer : l'inverse.
+    const vIn = $("bInSel").value, vOut = $("bOutSel").value, vOut2 = $("bOut2Sel").value;
+    const p = planFor(ymd(now())) || {};
+    cutOn = !cutOn; badgeTouched = true;
+    if (cutOn) setBadgeValues(vIn, p.start2 ? p.end || "" : "", p.start2 || "", vOut || p.end2 || "");
+    else setBadgeValues(vIn, vOut2 || vOut, "", "");
+    renderBadge();
+  };
   $("bSave").onclick = () => {
-    const ds = ymd(now()), vIn = $("bInSel").value, vOut = $("bOutSel").value;
-    setEntry(ds, { in: vIn, out: vOut || null, off: null });
-    toast(vOut ? `Journée enregistrée · ${vIn} – ${vOut}` : `Arrivée enregistrée · ${vIn}`);
+    const ds = ymd(now()), b = badgeEntry();
+    if (shiftError(b)) return;
+    setEntry(ds, { in: b.in, out: b.out, in2: b.in2 || null, out2: b.in2 ? b.out2 || null : null, off: null });
+    toast(b.out ? `Journée enregistrée · ${timesText(b)}` : `Arrivée enregistrée · ${b.in}`);
     showApp();
   };
-  $("bOff").onclick = () => { setEntry(ymd(now()), { off: true, in: null, out: null }); toast("Jour off enregistré"); showApp(); };
+  $("bOff").onclick = () => { setEntry(ymd(now()), { off: true, in: null, out: null, in2: null, out2: null }); toast("Jour off enregistré"); showApp(); };
   $("bSkip").onclick = showApp;
   $("openBadge").onclick = () => { badgeTouched = false; tickBadge(); $("app").hidden = true; $("badge").hidden = false; renderBadge(); window.scrollTo(0, 0); };
   function showApp() { $("badge").hidden = true; $("app").hidden = false; render(); window.scrollTo(0, 0); }
@@ -281,11 +338,14 @@
   }
   function renderDash() {
     const d = now(), ds = ymd(d), e = entry(ds) || {}, p = planFor(ds);
-    $("tIn").textContent = e.in || "—"; $("tOut").textContent = e.out || "—";
+    $("tIn").textContent = e.in || "—"; $("tOut").textContent = (e.in2 ? e.out2 : e.out) || "—";
     const w = worked(e, true);
     $("tWork").textContent = e.off ? "Off" : dur(w);
-    $("todayChip").innerHTML = e.off ? '<span class="chip off">Jour off</span>' : e.in && !e.out ? '<span class="chip open">En poste</span>' : e.in ? '<span class="chip in">Terminée</span>' : '<span class="chip miss">Pas pointé</span>';
-    $("tPlan").textContent = p ? (p.off ? "Prévu : repos" : `Prévu : ${p.start} – ${p.end} (${dur(planned(p))})`) : "Pas de planning pour aujourd'hui.";
+    // En coupure : premier service terminé, reprise prévue au planning mais pas encore pointée.
+    const inCut = e.in && e.out && !e.in2 && p && p.start2 && hm(d) < p.end2;
+    $("todayChip").innerHTML = e.off ? '<span class="chip off">Jour off</span>' : openShift(e) ? '<span class="chip open">En poste</span>' : inCut ? '<span class="chip open">En coupure</span>' : e.in ? '<span class="chip in">Terminée</span>' : '<span class="chip miss">Pas pointé</span>';
+    const cut = e.in2 ? `Coupure ${e.out} – ${e.in2} · ` : "";
+    $("tPlan").textContent = cut + (p ? (p.off ? "Prévu : repos" : `Prévu : ${planText(p)} (${dur(planned(p))})`) : "Pas de planning pour aujourd'hui.");
 
     const key = ym(d), st = monthStats(key);
     $("mTitle").textContent = fr(d, { month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase());
@@ -318,7 +378,7 @@
     } else {
       let tot = 0; const r = [];
       for (let i = 0; i < 7; i++) { const x = addDays(nm, i), p = plan[ymd(x)]; const pm = planned(p); tot += pm || 0;
-        r.push(`<div><span class="num" style="text-transform:capitalize">${dayName(x)}</span><span class="num">${p ? (p.off ? '<span class="chip off">Repos</span>' : `${p.start} – ${p.end}`) : '<span style="color:var(--muted)">—</span>'}</span><span class="num">${pm ? dur(pm) : ""}</span></div>`); }
+        r.push(`<div><span class="num" style="text-transform:capitalize">${dayName(x)}</span><span class="num">${p ? (p.off ? '<span class="chip off">Repos</span>' : planText(p)) : '<span style="color:var(--muted)">—</span>'}</span><span class="num">${pm ? dur(pm) : ""}</span></div>`); }
       $("nBody").innerHTML = `<div class="plan-mini">${r.join("")}</div><div class="ptotal"><span>Total prévu</span><span class="num">${dur(tot)}</span></div>`;
       $("nEdit").textContent = "Modifier le planning"; $("nEdit").className = "btn";
     }
@@ -331,8 +391,8 @@
   $("hNext").onclick = () => { hMonth = new Date(hMonth.getFullYear(), hMonth.getMonth() + 1, 1); openDay = null; render(); };
   function statusChip(e, ds) {
     if (e && e.off) return '<span class="chip off">Off</span>';
-    if (e && e.in && e.out) return '<span class="chip in">Pointé</span>';
-    if (e && e.in) return ds === ymd(now()) ? '<span class="chip open">En poste</span>' : '<span class="chip miss">Départ ?</span>';
+    if (openShift(e)) return ds === ymd(now()) ? '<span class="chip open">En poste</span>' : '<span class="chip miss">Départ ?</span>';
+    if (e && e.in) return '<span class="chip in">Pointé</span>';
     return "";
   }
   function renderHist() {
@@ -347,8 +407,8 @@
       const we = d.getDay() === 0 || d.getDay() === 6;
       total += w || 0; wk += w || 0; wkp += pm || 0;
       out.push(`<button class="hrow day ${we ? "weekend" : ""}" data-day="${ds}" aria-expanded="${openDay === ds}">
-        <span class="dn">${dayName(d)}<span class="times-m num">${e && e.in ? `${e.in} → ${e.out || "…"}` : ""}</span></span>
-        <span class="t">${e && e.in || ""}</span><span class="t">${e && e.out || ""}</span>
+        <span class="dn">${dayName(d)}<span class="times-m num">${e && e.in ? timesText(e) : ""}</span></span>
+        <span class="t">${e && e.in ? e.in + (e.in2 ? `<br>${e.in2}` : "") : ""}</span><span class="t">${e && e.in ? (e.out || "") + (e.in2 ? `<br>${e.out2 || "…"}` : "") : ""}</span>
         <span class="t">${w != null ? dur(w) : ""}</span><span class="t">${pm != null ? dur(pm) : p && p.off ? "repos" : ""}</span><span>${statusChip(e, ds)}</span></button>`);
       if (openDay === ds) out.push(editorHtml(ds, e || {}));
       if (d.getDay() === 0 || i === lastDay) {
@@ -365,7 +425,9 @@
     return `<div class="editor" data-ed="${ds}">
       <div class="fields">
         <div class="field"><label for="eIn">Arrivée</label>${slotSelect("eIn", e.in || "")}</div>
-        <div class="field"><label for="eOut">Départ</label>${slotSelect("eOut", e.out || "")}</div>
+        <div class="field"><label for="eOut" id="eOutLbl">${e.in2 ? "Coupure" : "Départ"}</label>${slotSelect("eOut", e.out || "")}</div>
+        <div class="field"><label for="eIn2">Reprise <span class="opt">(si coupure)</span></label>${slotSelect("eIn2", e.in2 || "")}</div>
+        <div class="field"><label for="eOut2">Départ</label>${slotSelect("eOut2", e.out2 || "")}</div>
         <label class="check"><input type="checkbox" id="eOff" ${e.off ? "checked" : ""}> Jour off</label>
         <div class="field"><label for="eNote">Note</label><input id="eNote" maxlength="80" value="${(e.note || "").replace(/"/g, "&quot;")}" placeholder="Congé, RTT, formation…"></div>
       </div>
@@ -374,28 +436,35 @@
   }
   function bindEditor(ed) {
     const ds = ed.dataset.ed, off = ed.querySelector("#eOff");
-    const sync = () => ["#eIn", "#eOut"].forEach(s => ed.querySelector(s).disabled = off.checked);
-    off.onchange = sync; sync();
+    const v = id => ed.querySelector(id).value || null;
+    const sync = () => {
+      ["#eIn", "#eOut", "#eIn2", "#eOut2"].forEach(s => ed.querySelector(s).disabled = off.checked);
+      ed.querySelector("#eOutLbl").textContent = v("#eIn2") ? "Coupure" : "Départ";
+    };
+    off.onchange = sync; ed.querySelector("#eIn2").onchange = sync; sync();
     ed.querySelector("#eSave").onclick = () => {
-      const o = off.checked;
-      const vIn = ed.querySelector("#eIn").value, vOut = ed.querySelector("#eOut").value;
-      if (!o && vOut && !vIn) { toast("Indiquez l'heure d'arrivée."); return; }
-      setEntry(ds, o ? { off: true, in: null, out: null, note: ed.querySelector("#eNote").value.trim() || null }
-                     : { off: null, in: vIn || null, out: vOut || null, note: ed.querySelector("#eNote").value.trim() || null });
+      const o = off.checked, note = ed.querySelector("#eNote").value.trim() || null;
+      const e = { in: v("#eIn"), out: v("#eOut"), in2: v("#eIn2"), out2: v("#eOut2") };
+      if (!o) {
+        const err = (!e.in && (e.out || e.in2 || e.out2)) ? "Indiquez l'heure d'arrivée." : shiftError(e);
+        if (err) { toast(err); return; }
+      }
+      setEntry(ds, o ? { off: true, in: null, out: null, in2: null, out2: null, note }
+                     : { off: null, ...e, out2: e.in2 ? e.out2 : null, note });
       openDay = null; toast("Journée mise à jour"); render();
     };
     ed.querySelector("#eCancel").onclick = () => { openDay = null; render(); };
     ed.querySelector("#eDel").onclick = function () {
-      if (this.dataset.confirm) { setEntry(ds, { off: null, in: null, out: null, note: null }); openDay = null; toast("Journée effacée"); render(); }
+      if (this.dataset.confirm) { setEntry(ds, { off: null, in: null, out: null, in2: null, out2: null, note: null }); openDay = null; toast("Journée effacée"); render(); }
       else { this.dataset.confirm = "1"; this.textContent = "Confirmer l'effacement"; }
     };
   }
   $("hExport").onclick = () => {
-    const key = ym(hMonth), rows = [["Date", "Arrivée", "Départ", "Travaillé (h)", "Jour off", "Prévu (h)", "Note"]];
+    const key = ym(hMonth), rows = [["Date", "Arrivée", "Départ", "Reprise", "Départ 2", "Travaillé (h)", "Jour off", "Prévu (h)", "Note"]];
     const [y, m] = key.split("-").map(Number), last = new Date(y, m, 0).getDate();
     for (let i = 1; i <= last; i++) { const ds = `${key}-${pad(i)}`, e = entry(ds), p = planFor(ds); if (!e && !p) continue;
       const w = worked(e), pm = planned(p);
-      rows.push([ds, e?.in || "", e?.out || "", w != null ? (w / 60).toFixed(2).replace(".", ",") : "", e?.off ? "oui" : "", pm != null ? (pm / 60).toFixed(2).replace(".", ",") : "", (e?.note || "").replace(/;/g, ",")]); }
+      rows.push([ds, e?.in || "", e?.out || "", e?.in2 || "", e?.out2 || "", w != null ? (w / 60).toFixed(2).replace(".", ",") : "", e?.off ? "oui" : "", pm != null ? (pm / 60).toFixed(2).replace(".", ",") : "", (e?.note || "").replace(/;/g, ",")]); }
     // BOM UTF-8 + point-virgule : Excel en français ouvre le fichier correctement.
     const blob = new Blob(["\ufeff" + rows.map(r => r.join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `heures-${key}.csv`;
@@ -415,19 +484,27 @@
     $("pRange").textContent = `Du ${fr(mon, { weekday: "long", day: "numeric", month: "long" })} au ${fr(addDays(mon, 6), { weekday: "long", day: "numeric", month: "long" })}${rel}`;
     const r = []; let tot = 0;
     for (let i = 0; i < 7; i++) {
-      const x = addDays(mon, i), ds = ymd(x), p = dr[ds] || {}, pm = planned(p); tot += pm || 0;
-      r.push(`<div class="prow" data-pd="${ds}"><span class="dn">${fr(x, { weekday: "long", day: "numeric" })}</span>
-        <span class="a">${slotSelect("ps-" + ds, p.start || "", `aria-label="Début ${ds}" ${p.off ? "disabled" : ""}`)}</span>
-        <span class="b">${slotSelect("pe-" + ds, p.end || "", `aria-label="Fin ${ds}" ${p.off ? "disabled" : ""}`)}</span>
-        <label class="check"><input type="checkbox" id="po-${ds}" ${p.off ? "checked" : ""}> Repos</label>
+      const x = addDays(mon, i), ds = ymd(x), p = dr[ds] || {}, pm = planned(p), cut = "start2" in p; tot += pm || 0;
+      const dis = p.off ? "disabled" : "";
+      r.push(`<div class="prow ${cut ? "cut" : ""}" data-pd="${ds}"><span class="dn">${fr(x, { weekday: "long", day: "numeric" })}</span>
+        <span class="a">${slotSelect("ps-" + ds, p.start || "", `aria-label="Début ${ds}" ${dis}`)}</span>
+        <span class="b">${slotSelect("pe-" + ds, p.end || "", `aria-label="${cut ? "Coupure" : "Fin"} ${ds}" ${dis}`)}</span>
+        <span class="checks"><label class="check"><input type="checkbox" id="po-${ds}" ${p.off ? "checked" : ""}> Repos</label>
+        <label class="check"><input type="checkbox" id="pc-${ds}" ${cut ? "checked" : ""} ${dis}> Coupure</label></span>
+        ${cut ? `<span class="a2">${slotSelect("ps2-" + ds, p.start2 || "", `aria-label="Reprise ${ds}"`)}</span>
+        <span class="b2">${slotSelect("pe2-" + ds, p.end2 || "", `aria-label="Fin ${ds}"`)}</span>` : ""}
         <span class="tot num">${pm ? dur(pm) : ""}</span></div>`);
     }
     $("pList").innerHTML = r.join(""); $("pTotal").textContent = dur(tot);
     $("pList").querySelectorAll(".prow").forEach(row => {
       const ds = row.dataset.pd;
       const upd = () => {
-        const off = row.querySelector(`#po-${ds}`).checked, s = row.querySelector(`#ps-${ds}`).value, e = row.querySelector(`#pe-${ds}`).value;
-        if (off) dr[ds] = { off: true }; else if (s || e) dr[ds] = { start: s, end: e }; else delete dr[ds];
+        const val = id => { const el = row.querySelector(`#${id}-${ds}`); return el ? el.value : ""; };
+        const off = row.querySelector(`#po-${ds}`).checked, cut = row.querySelector(`#pc-${ds}`).checked;
+        const s = val("ps"), e = val("pe"), s2 = val("ps2"), e2 = val("pe2");
+        if (off) dr[ds] = { off: true };
+        else if (s || e || cut) dr[ds] = cut ? { start: s, end: e, start2: s2, end2: e2 } : { start: s, end: e };
+        else delete dr[ds];
         renderPlan();
       };
       row.querySelectorAll("input, select").forEach(i => i.addEventListener("change", upd));
@@ -441,8 +518,13 @@
   };
   $("pClear").onclick = () => { pDraft = {}; renderPlan(); };
   $("pSave").onclick = () => {
-    const bad = Object.entries(draft()).find(([, p]) => !p.off && (!p.start || !p.end));
-    if (bad) { toast(`Complétez le début et la fin du ${fr(parse(bad[0]), { weekday: "long" })}.`); return; }
+    const day = ds => fr(parse(ds), { weekday: "long" });
+    for (const [ds, p] of Object.entries(draft())) {
+      if (p.off) continue;
+      if (!p.start || !p.end) { toast(`Complétez le début et la fin du ${day(ds)}.`); return; }
+      if ("start2" in p && (!p.start2 || !p.end2)) { toast(`Complétez la reprise et la fin du ${day(ds)}, ou décochez « Coupure ».`); return; }
+      if (p.start2 && toMin(p.end) >= toMin(p.start) && toMin(p.start2) <= toMin(p.end)) { toast(`Le ${day(ds)}, la reprise doit être après le début de la coupure.`); return; }
+    }
     S.plans[pKey()] = draft(); pDraft = null; persist(docName("p", pKey())); toast("Planning enregistré"); render();
   };
 
