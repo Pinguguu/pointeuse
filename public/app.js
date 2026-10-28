@@ -258,7 +258,16 @@
     document.querySelectorAll("[data-view]").forEach(v => v.hidden = v.dataset.view !== t);
     render();
   }
-  document.querySelectorAll(".tab").forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+    // Si la page est descendue, le nouvel onglet s'ouvre en haut, juste sous la barre d'onglets.
+    const bar = document.querySelector(".tabs"), stickTop = parseFloat(getComputedStyle(bar).top) || 0;
+    let above = bar.previousElementSibling; while (above && above.hidden) above = above.previousElementSibling;
+    const natural = window.scrollY + above.getBoundingClientRect().bottom + parseFloat(getComputedStyle($("app")).rowGap) - stickTop;
+    const stuck = window.scrollY > natural;
+    setTab(b.dataset.tab);
+    if (stuck) window.scrollTo(0, natural);
+    bar.scrollTo({ left: b.offsetLeft - 16, behavior: "smooth" });
+  });
 
   // ---------- Tableau de bord ----------
   function monthStats(key) {
