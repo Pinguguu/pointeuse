@@ -146,7 +146,8 @@
         </div>
         <div class="actions">
           <span class="num" id="hTotal" style="align-self:center;font-weight:600"></span>
-          <button class="btn" id="hExport">Exporter en CSV</button>
+          <button class="btn primary" id="hReport">Envoyer le relevé</button>
+          <button class="btn ghost" id="hExport">CSV</button>
         </div>
       </div>
       <div class="hist" id="hList"></div>
@@ -174,6 +175,7 @@
     <div class="panel" style="max-width:520px">
       <h2>Réglages</h2>
       <p style="margin:0;color:var(--muted);font-size:13.5px">Le temps travaillé correspond à l'amplitude complète, de l'arrivée au départ : la pause est comprise dans les horaires.</p>
+      <div class="field"><label for="sName">Votre nom (affiché sur le relevé envoyé au patron)</label><input id="sName" class="wide" maxlength="60" autocomplete="name" placeholder="Prénom Nom"></div>
       <div class="field"><label for="sWeek">Durée hebdomadaire de référence (heures)</label><input id="sWeek" class="short" type="number" min="0" max="80" step="0.5"></div>
       <div class="actions"><button class="btn primary" id="sSave">Enregistrer les réglages</button></div>
     </div>
@@ -197,6 +199,18 @@
     </div>
   </section>
 </main>
+<!-- ============ RELEVÉ À ENVOYER ============ -->
+<div class="sheet" id="report" role="dialog" aria-modal="true" aria-labelledby="rTitle" hidden>
+  <div class="sheet-inner">
+    <div class="sheet-head"><h2 id="rTitle">Relevé</h2><button class="iconbtn" id="rClose" aria-label="Fermer">✕</button></div>
+    <div class="sheet-img"><img id="rImg" alt="Relevé d'heures du mois"></div>
+    <div class="sheet-actions">
+      <button class="btn primary" id="rShare" hidden>Partager…</button>
+      <button class="btn" id="rSave">Enregistrer l'image</button>
+    </div>
+    <p class="hint" id="rHint"></p>
+  </div>
+</div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script src="/app.js"></script>
 </body>

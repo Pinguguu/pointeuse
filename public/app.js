@@ -471,6 +471,113 @@
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
 
+  // ---------- Relevé à envoyer (image) ----------
+  // Une fiche lisible sur un téléphone : chaque jour du mois, le total de chaque semaine et le total du mois.
+  // Dessinée sur un canvas, toujours en clair (elle part chez le patron, quel que soit le thème de l'appareil).
+  const RC = { bg: "#ffffff", ink: "#16233b", muted: "#5b667a", line: "#dfe3ea", band: "#eef1f5", accent: "#2346c9", off: "#a2610a" };
+  const RF = { display: '"Bricolage Grotesque", system-ui, sans-serif', body: '"IBM Plex Sans", system-ui, sans-serif', mono: '"IBM Plex Mono", ui-monospace, monospace' };
+  async function buildReport(key) {
+    try { await Promise.all(['700 30px "Bricolage Grotesque"', '400 15px "IBM Plex Sans"', '600 15px "IBM Plex Sans"', '500 15px "IBM Plex Mono"', '600 15px "IBM Plex Mono"'].map(f => document.fonts.load(f))); } catch {}
+    const [y, m] = key.split("-").map(Number), monthEnd = new Date(y, m, 0).getDate();
+    const partial = key === ym(now()), lastDay = partial ? now().getDate() : monthEnd;
+    const rows = []; let total = 0, wk = 0, nDays = 0, nOff = 0;
+    for (let i = 1; i <= lastDay; i++) {
+      const d = new Date(y, m - 1, i), ds = ymd(d), e = entry(ds), w = worked(e);
+      total += w || 0; wk += w || 0; if (w != null) nDays++; if (e && e.off) nOff++;
+      rows.push({ kind: "day", d, e, w });
+      if (d.getDay() === 0 || i === lastDay) { rows.push({ kind: "week", n: isoWeek(d), w: wk }); wk = 0; }
+    }
+    const W = 720, P = 36, RH = 36, WH = 34, HEAD = 168, TH = 34, FOOT = 150;
+    const H = P + HEAD + TH + rows.reduce((h, r) => h + (r.kind === "day" ? RH : WH), 0) + FOOT + P;
+    const scale = 2, cv = document.createElement("canvas");
+    cv.width = W * scale; cv.height = H * scale;
+    const c = cv.getContext("2d"); c.scale(scale, scale); c.textBaseline = "middle";
+    const text = (s, x, y, font, color, align = "left") => { c.font = font; c.fillStyle = color; c.textAlign = align; c.fillText(s, x, y); };
+    const fit = (s, maxW) => { if (c.measureText(s).width <= maxW) return s; while (s.length > 1 && c.measureText(s + "…").width > maxW) s = s.slice(0, -1); return s + "…"; };
+    const hline = (y, color = RC.line) => { c.fillStyle = color; c.fillRect(P, y, W - 2 * P, 1); };
+    c.fillStyle = RC.bg; c.fillRect(0, 0, W, H);
+
+    // En-tête : qui, quel mois, et le total tout de suite visible.
+    const month = fr(new Date(y, m - 1, 1), { month: "long", year: "numeric" }).replace(/^./, s => s.toUpperCase());
+    let yy = P + 10;
+    text("RELEVÉ D'HEURES", P, yy, `600 12px ${RF.body}`, RC.muted);
+    yy += 36; text(month, P, yy, `700 32px ${RF.display}`, RC.ink);
+    yy += 34; text(S.settings.name || me || "", P, yy, `600 17px ${RF.body}`, RC.ink);
+    yy += 24; text(partial ? `Arrêté au ${fr(now(), { day: "numeric", month: "long" })}` : `Du 1er au ${monthEnd} ${fr(new Date(y, m - 1, 1), { month: "long" })}`, P, yy, `400 14px ${RF.body}`, RC.muted);
+    text("Total", W - P, P + 46, `600 13px ${RF.body}`, RC.muted, "right");
+    text(dur(total), W - P, P + 82, `600 34px ${RF.mono}`, RC.accent, "right");
+    yy = P + HEAD;
+
+    // Tableau
+    const xT = P + 150, xW = W - P;
+    text("JOUR", P, yy + TH / 2, `600 11.5px ${RF.body}`, RC.muted);
+    text("HORAIRES", xT, yy + TH / 2, `600 11.5px ${RF.body}`, RC.muted);
+    text("TRAVAILLÉ", xW, yy + TH / 2, `600 11.5px ${RF.body}`, RC.muted, "right");
+    yy += TH; hline(yy - 1, RC.ink);
+    for (const r of rows) {
+      if (r.kind === "week") {
+        c.fillStyle = RC.band; c.fillRect(P, yy + 3, W - 2 * P, WH - 6);
+        text(`Semaine ${r.n}`, P + 10, yy + WH / 2, `600 14px ${RF.body}`, RC.ink);
+        text(dur(r.w), xW - 10, yy + WH / 2, `600 15px ${RF.mono}`, RC.ink, "right");
+        yy += WH; continue;
+      }
+      const { d, e, w } = r, we = d.getDay() === 0 || d.getDay() === 6, mid = yy + RH / 2;
+      text(dayName(d).replace(/^./, s => s.toUpperCase()), P, mid, `${we ? 400 : 500} 15px ${RF.body}`, we ? RC.muted : RC.ink);
+      if (e && e.off) text("Jour off", xT, mid, `600 15px ${RF.body}`, RC.off);
+      else if (e && e.in) {
+        c.font = `500 15px ${RF.mono}`; const t = timesText(e), tw = c.measureText(t).width;
+        text(t, xT, mid, c.font, RC.ink);
+        if (e.note) { c.font = `400 13px ${RF.body}`; text(fit(e.note, xW - 90 - xT - tw - 14), xT + tw + 14, mid, c.font, RC.muted); }
+      } else text("—", xT, mid, `400 15px ${RF.body}`, RC.line);
+      if (e && e.off && e.note) { c.font = `400 13px ${RF.body}`; text(fit(e.note, xW - 90 - xT - 90), xT + 80, mid, c.font, RC.muted); }
+      if (w != null) text(dur(w), xW, mid, `500 15px ${RF.mono}`, RC.ink, "right");
+      yy += RH; hline(yy - 1);
+    }
+
+    // Pied : total du mois et résumé
+    yy += 22; hline(yy, RC.ink); yy += 36;
+    text("Total du mois", P, yy, `700 20px ${RF.display}`, RC.ink);
+    text(dur(total), xW, yy, `600 24px ${RF.mono}`, RC.accent, "right");
+    yy += 32;
+    const parts = [`${nDays} jour${nDays > 1 ? "s" : ""} travaillé${nDays > 1 ? "s" : ""}`, `${nOff} jour${nOff > 1 ? "s" : ""} off`];
+    if (nDays) parts.push(`moyenne ${dur(total / nDays)} par jour`);
+    text(parts.join(" · "), P, yy, `400 14px ${RF.body}`, RC.muted);
+    yy += 26;
+    text(`Établi le ${fr(now(), { day: "numeric", month: "long", year: "numeric" })} avec Pointeuse · pause comprise dans les horaires`, P, yy, `400 12px ${RF.body}`, RC.muted);
+    return new Promise(res => cv.toBlob(res, "image/png"));
+  }
+
+  let reportFile = null, reportUrl = null, reportOpener = null;
+  $("hReport").onclick = async () => {
+    const key = ym(hMonth), btn = $("hReport");
+    btn.disabled = true;
+    let blob = null; try { blob = await buildReport(key); } catch {}
+    btn.disabled = false;
+    if (!blob) { toast("Impossible de créer l'image. Réessayez."); return; }
+    const who = (S.settings.name || me || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+    reportFile = new File([blob], `releve-heures-${key}${who ? "-" + who : ""}.png`, { type: "image/png" });
+    if (reportUrl) URL.revokeObjectURL(reportUrl);
+    reportUrl = URL.createObjectURL(blob);
+    $("rImg").src = reportUrl;
+    $("rTitle").textContent = `Relevé · ${fr(hMonth, { month: "long", year: "numeric" })}`;
+    const canShare = !!(navigator.canShare && navigator.canShare({ files: [reportFile] }));
+    $("rShare").hidden = !canShare;
+    $("rHint").textContent = S.settings.name ? "" : "Astuce : indiquez votre nom dans Réglages pour qu'il apparaisse sur le relevé.";
+    reportOpener = btn; $("report").hidden = false; (canShare ? $("rShare") : $("rSave")).focus();
+  };
+  function closeReport() { $("report").hidden = true; if (reportOpener) reportOpener.focus(); }
+  $("rClose").onclick = closeReport;
+  $("report").addEventListener("click", ev => { if (ev.target === $("report")) closeReport(); });
+  document.addEventListener("keydown", ev => { if (ev.key === "Escape" && !$("report").hidden) closeReport(); });
+  $("rShare").onclick = async () => {
+    try { await navigator.share({ files: [reportFile], title: "Relevé d'heures" }); }
+    catch (err) { if (err && err.name !== "AbortError") toast("Partage impossible. Utilisez « Enregistrer l'image »."); }
+  };
+  $("rSave").onclick = () => {
+    const a = document.createElement("a"); a.href = reportUrl; a.download = reportFile.name;
+    document.body.append(a); a.click(); a.remove();
+  };
+
   // ---------- Planning ----------
   let pWeek = addDays(monday(now()), 7), pDraft = null;
   const pKey = () => ymd(pWeek);
@@ -529,10 +636,14 @@
   };
 
   // ---------- Réglages ----------
-  function renderSet() { if (document.activeElement?.id !== "sWeek") $("sWeek").value = S.settings.weekly; }
+  function renderSet() {
+    if (document.activeElement?.id !== "sWeek") $("sWeek").value = S.settings.weekly;
+    if (document.activeElement?.id !== "sName") $("sName").value = S.settings.name || "";
+  }
   $("sSave").onclick = () => {
     const wk = Math.max(0, Math.min(80, +$("sWeek").value || 0));
-    S.settings = { weekly: wk }; persist("settings"); toast("Réglages enregistrés"); render();
+    const name = $("sName").value.trim().slice(0, 60);
+    S.settings = { weekly: wk, ...(name ? { name } : {}) }; persist("settings"); toast("Réglages enregistrés"); render();
   };
 
   // ---------- Rendu ----------

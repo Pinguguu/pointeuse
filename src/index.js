@@ -255,7 +255,11 @@ function cleanDoc(id, body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Données invalides.');
   if (id === 'settings') {
     const weekly = Number(body.weekly);
-    return { weekly: Number.isFinite(weekly) ? Math.max(0, Math.min(80, Math.round(weekly * 2) / 2)) : 35 };
+    const out = { weekly: Number.isFinite(weekly) ? Math.max(0, Math.min(80, Math.round(weekly * 2) / 2)) : 35 };
+    // Nom affiché sur le relevé envoyé au patron (texte libre, court, sans caractères de contrôle).
+    const name = typeof body.name === 'string' ? body.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) : '';
+    if (name) out.name = name;
+    return out;
   }
   const src = body.days && typeof body.days === 'object' && !Array.isArray(body.days) ? body.days : {};
   const prefix = id.startsWith('m-') ? id.slice(2) : null; // un mois ne contient que ses propres jours

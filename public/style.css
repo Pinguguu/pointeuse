@@ -219,3 +219,14 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .sync { font-size: 13px; color: var(--muted); }
 .sync.pending { color: var(--off); }
 .field label .opt { color: var(--muted); font-weight: 400; }
+
+/* ---------- Relevé (aperçu avant envoi) ---------- */
+.sheet { position: fixed; inset: 0; z-index: 50; background: rgba(10, 16, 30, .55); display: grid; place-items: end center; }
+.sheet-inner { width: 100%; max-width: 560px; max-height: 100dvh; background: var(--card); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)); display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 12px; }
+@media (min-width: 600px) { .sheet { place-items: center; } .sheet-inner { border-radius: 16px; max-height: 92vh; } }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.sheet-head h2 { font-size: 19px; }
+.sheet-img { overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: #fff; overscroll-behavior: contain; }
+.sheet-img img { display: block; width: 100%; height: auto; }
+.sheet-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.sheet-actions .btn { padding: 12px; font-size: 16px; }
