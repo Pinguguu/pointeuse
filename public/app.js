@@ -470,7 +470,9 @@
         <span class="t">${w != null ? dur(w) : ""}</span><span class="t">${pm != null ? dur(pm) : p && p.off ? "repos" : ""}</span><span>${statusChip(e, ds)}</span></button>`);
       if (openDay === ds) out.push(editorHtml(ds, e || {}));
       if (d.getDay() === 0 || i === lastDay) {
-        out.push(`<div class="hrow wk"><span>Semaine ${isoWeek(d)}</span><span></span><span></span><span class="t">${dur(wk)}</span><span class="t">${wkp ? dur(wkp) : ""}</span><span></span></div>`);
+        const wkKey = ymd(monday(d)), wkSchool = !!S.school[wkKey];
+        const wkBtn = altOn() ? ` <button type="button" class="wk-school" data-wk="${wkKey}" aria-pressed="${wkSchool}" title="Semaine de cours (alternance)">${wkSchool ? "Cours ✓" : "+ Cours"}</button>` : "";
+        out.push(`<div class="hrow wk"><span>Semaine ${isoWeek(d)}${wkBtn}</span><span></span><span></span><span class="t">${dur(wk)}</span><span class="t">${wkp ? dur(wkp) : ""}</span><span></span></div>`);
         wk = 0; wkp = 0;
       }
     }
@@ -478,6 +480,16 @@
     $("hTotal").textContent = `Total : ${dur(total)}`;
     $("hList").querySelectorAll(".hrow.day").forEach(b => b.onclick = () => { openDay = openDay === b.dataset.day ? null : b.dataset.day; render(); });
     const ed = $("hList").querySelector(".editor"); if (ed) bindEditor(ed);
+    $("hList").querySelectorAll(".wk-school").forEach(b => b.onclick = () => toggleSchoolWeek(b.dataset.wk));
+  }
+  // Marquer (ou non) une semaine passée comme semaine de cours, sans toucher à son planning de travail.
+  function toggleSchoolWeek(key) {
+    const on = !S.school[key];
+    if (on) S.school[key] = true; else delete S.school[key];
+    persist(docName("p", key));
+    const n = isoWeek(parse(key));
+    toast(on ? `Semaine ${n} : semaine de cours (${dur(schoolPerDay() * 5)})` : `Semaine ${n} : n'est plus une semaine de cours`);
+    pSchoolDraft = null; render();
   }
   function editorHtml(ds, e) {
     return `<div class="editor" data-ed="${ds}">

@@ -250,3 +250,6 @@ time-pick > select.tsel:disabled { opacity: .45; }
 .prow.school { grid-template-columns: 9em 1fr 6em; grid-template-areas: "dn sc tot"; }
 .prow .schoolcell { grid-area: sc; }
 @media (max-width: 560px) { .prow.school { grid-template-columns: 1fr auto; grid-template-areas: "dn tot" "sc sc"; } }
+.wk-school { margin-left: 8px; border: 1px dashed var(--line); background: var(--card); color: var(--muted); border-radius: 99px; padding: 1px 10px; font-size: 12px; font-weight: 600; vertical-align: middle; }
+.wk-school:hover { border-color: var(--school); color: var(--school); }
+.wk-school[aria-pressed="true"] { border-style: solid; border-color: var(--school-soft); background: var(--school-soft); color: var(--school); }
