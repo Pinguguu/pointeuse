@@ -79,8 +79,9 @@ La base D1 locale est créée dans `.wrangler/` (ignoré par git) ; la valeur d'
 Chaque compte a de petits documents JSON dans la table `docs` :
 
 - `m-2026-10` : les jours pointés d'un mois (`{"days": {"2026-10-28": {"in": "10:00", "out": "15:30"}}}`, ou `{"off": true}`, avec une `note` facultative) ;
-- `p-2026-10-26` : le planning de la semaine qui commence ce lundi (`start`, `end` ou `off`) ;
-- `settings` : la durée hebdomadaire de référence.
+- `m-…` : un jour peut aussi avoir une coupure (`in2`, `out2`, second service) ;
+- `p-2026-10-26` : le planning de la semaine qui commence ce lundi (`start`, `end`, `start2`, `end2` ou `off`), et `"school": true` pour une semaine de cours ;
+- `settings` : la durée hebdomadaire de référence (`weekly`), le nom affiché sur le relevé (`name`), l'option alternance (`alt`) et les heures comptées pour une semaine de cours (`school`, 35 par défaut, réparties du lundi au vendredi).
 
 Le serveur ne garde que ces champs, au bon format (heures `HH:MM`, notes de 80 caractères au plus).
 

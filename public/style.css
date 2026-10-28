@@ -11,6 +11,7 @@
   --in: #157a4f;  --in-soft: #dcf1e7;
   --out: #2346c9; --out-soft: #e3e9fb;
   --off: #a2610a; --off-soft: #fbeeda;
+  --school: #6b3fb5; --school-soft: #eee6fa;
   --warn: #b3261e;
   --display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
@@ -20,13 +21,13 @@
   --paper: #0f1420; --card: #171e2d; --ink: #e6ebf4; --muted: #94a0b6; --line: #2a3448;
   --accent: #8ea6ff; --accent-soft: #1f2a4a;
   --in: #5fd3a0; --in-soft: #143327; --out: #8ea6ff; --out-soft: #1f2a4a;
-  --off: #f0b35e; --off-soft: #3a2a12; --warn: #ff8a80; color-scheme: dark;
+  --off: #f0b35e; --off-soft: #3a2a12; --school: #b99bf0; --school-soft: #2c2142; --warn: #ff8a80; color-scheme: dark;
 } }
 :root[data-theme="dark"] {
   --paper: #0f1420; --card: #171e2d; --ink: #e6ebf4; --muted: #94a0b6; --line: #2a3448;
   --accent: #8ea6ff; --accent-soft: #1f2a4a;
   --in: #5fd3a0; --in-soft: #143327; --out: #8ea6ff; --out-soft: #1f2a4a;
-  --off: #f0b35e; --off-soft: #3a2a12; --warn: #ff8a80; color-scheme: dark;
+  --off: #f0b35e; --off-soft: #3a2a12; --school: #b99bf0; --school-soft: #2c2142; --warn: #ff8a80; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -135,6 +136,7 @@ time-pick > select.tsel:disabled { opacity: .45; }
 .wb { display: grid; gap: 6px; justify-items: center; font-size: 12px; }
 .wb .track { position: relative; width: 100%; max-width: 38px; height: 110px; background: var(--paper); border-radius: 6px; overflow: hidden; }
 .wb .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); border-radius: 6px 6px 0 0; }
+.wb .fill.school { background: var(--school); }
 .wb .plan { position: absolute; left: -2px; right: -2px; border-top: 2px dashed var(--ink); opacity: .55; }
 .wb.off .track { background: repeating-linear-gradient(45deg, var(--off-soft) 0 6px, transparent 6px 12px); }
 .wb.today .d { color: var(--accent); font-weight: 700; }
@@ -151,6 +153,7 @@ time-pick > select.tsel:disabled { opacity: .45; }
 .chip { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .chip.in { background: var(--in-soft); color: var(--in); }
 .chip.off { background: var(--off-soft); color: var(--off); }
+.chip.school { background: var(--school-soft); color: var(--school); }
 .chip.open { background: var(--accent-soft); color: var(--accent); }
 .chip.miss { background: var(--paper); color: var(--muted); }
 
@@ -240,3 +243,10 @@ time-pick > select.tsel:disabled { opacity: .45; }
 .sheet-img img { display: block; width: 100%; height: auto; }
 .sheet-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .sheet-actions .btn { padding: 12px; font-size: 16px; }
+
+/* Planning : semaine de cours (alternance) */
+.school-toggle { background: var(--school-soft); border-radius: 10px; padding: 10px 12px; align-items: flex-start; }
+.school-toggle input { margin-top: 3px; accent-color: var(--school); }
+.prow.school { grid-template-columns: 9em 1fr 6em; grid-template-areas: "dn sc tot"; }
+.prow .schoolcell { grid-area: sc; }
+@media (max-width: 560px) { .prow.school { grid-template-columns: 1fr auto; grid-template-areas: "dn tot" "sc sc"; } }

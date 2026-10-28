@@ -120,6 +120,7 @@
         <div class="kv">
           <div><div class="label">Jours travaillés</div><div class="v" id="mDays">0</div></div>
           <div><div class="label">Jours off</div><div class="v" id="mOff">0</div></div>
+          <div id="mSchoolBox" hidden><div class="label">Jours de cours</div><div class="v" id="mSchool">0</div></div>
           <div><div class="label">Moyenne / jour</div><div class="v" id="mAvg">—</div></div>
           <div><div class="label">Écart au planning</div><div class="v" id="mDelta">—</div></div>
         </div>
@@ -127,7 +128,7 @@
       <div class="panel">
         <div class="panel-head"><h2 id="wTitle">Cette semaine</h2><span class="num" id="wTotal"></span></div>
         <div class="week-bars" id="wBars"></div>
-        <div class="legend"><span><i style="border-top:6px solid var(--accent)"></i>Travaillé</span><span><i style="border-top:2px dashed var(--ink)"></i>Prévu</span></div>
+        <div class="legend"><span><i style="border-top:6px solid var(--accent)"></i>Travaillé</span><span><i style="border-top:2px dashed var(--ink)"></i>Prévu</span><span id="legSchool" hidden><i style="border-top:6px solid var(--school)"></i>Cours</span></div>
       </div>
     </div>
     <div class="panel">
@@ -165,6 +166,7 @@
         <button class="btn ghost" id="pCopy">Copier la semaine précédente</button>
       </div>
       <div id="pRange" class="label" style="text-transform:none;letter-spacing:0;font-weight:400"></div>
+      <label class="check school-toggle" id="pSchoolBox" hidden><input type="checkbox" id="pSchool"> <span><b>Semaine de cours</b> (alternance) : <span id="pSchoolH">35 h</span> comptées, du lundi au vendredi</span></label>
       <div id="pList"></div>
       <div class="ptotal"><span>Total prévu</span><span class="num" id="pTotal">0 h 00</span></div>
       <div class="actions"><button class="btn primary" id="pSave">Enregistrer le planning</button><button class="btn ghost" id="pClear">Vider la semaine</button></div>
@@ -176,6 +178,9 @@
       <h2>Réglages</h2>
       <p style="margin:0;color:var(--muted);font-size:13.5px">Le temps travaillé correspond à l'amplitude complète, de l'arrivée au départ : la pause est comprise dans les horaires.</p>
       <div class="field"><label for="sName">Votre nom (affiché sur le relevé envoyé au patron)</label><input id="sName" class="wide" maxlength="60" autocomplete="name" placeholder="Prénom Nom"></div>
+      <label class="check"><input type="checkbox" id="sAlt"> Je suis en alternance</label>
+      <div class="field" id="sSchoolF" hidden><label for="sSchool">Heures comptées pour une semaine de cours</label><input id="sSchool" class="short" type="number" min="0" max="60" step="0.5">
+        <p class="hint">Cochez ensuite « Semaine de cours » dans le Planning pour les semaines concernées : ces heures sont réparties du lundi au vendredi.</p></div>
       <div class="field"><label for="sWeek">Durée hebdomadaire de référence (heures)</label><input id="sWeek" class="short" type="number" min="0" max="80" step="0.5"></div>
       <div class="actions"><button class="btn primary" id="sSave">Enregistrer les réglages</button></div>
     </div>

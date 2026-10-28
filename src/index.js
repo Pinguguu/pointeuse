@@ -255,7 +255,11 @@ function cleanDoc(id, body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Données invalides.');
   if (id === 'settings') {
     const weekly = Number(body.weekly);
-    const out = { weekly: Number.isFinite(weekly) ? Math.max(0, Math.min(80, Math.round(weekly * 2) / 2)) : 35 };
+    const half = (v, max) => Math.max(0, Math.min(max, Math.round(v * 2) / 2));
+    const school = Number(body.school);
+    // weekly : durée de référence ; school : heures comptées pour une semaine de cours (alternance).
+    const out = { weekly: Number.isFinite(weekly) ? half(weekly, 80) : 35, school: Number.isFinite(school) ? half(school, 60) : 35 };
+    if (body.alt === true) out.alt = true;
     // Nom affiché sur le relevé envoyé au patron (texte libre, court, sans caractères de contrôle).
     const name = typeof body.name === 'string' ? body.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) : '';
     if (name) out.name = name;
@@ -286,7 +290,8 @@ function cleanDoc(id, body) {
     }
     if (Object.keys(e).length) days[ds] = e;
   }
-  return { days };
+  // Planning : la semaine peut être une semaine de cours (alternance).
+  return !prefix && body.school === true ? { days, school: true } : { days };
 }
 
 async function listDocs(env, request) {
@@ -302,7 +307,7 @@ async function putDoc(env, request, rawId) {
   const id = decodeURIComponent(rawId);
   if (!DOC_RE.test(id)) throw new HttpError(400, 'Document invalide.');
   const clean = cleanDoc(id, await readJson(request));
-  const empty = clean.days && !Object.keys(clean.days).length;
+  const empty = clean.days && !Object.keys(clean.days).length && !clean.school;
   if (empty) {
     await env.DB.prepare('DELETE FROM docs WHERE user_id = ? AND id = ?').bind(user.id, id).run();
     return json({ ok: true });

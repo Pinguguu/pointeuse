@@ -55,8 +55,8 @@
   customElements.define("time-pick", TimePick);
 
   // ---------- État ----------
-  const DEFAULTS = { weekly: 35 };
-  const S = { months: {}, plans: {}, settings: { ...DEFAULTS } };
+  const DEFAULTS = { weekly: 35, school: 35 };
+  const S = { months: {}, plans: {}, school: {}, settings: { ...DEFAULTS } };
   const now = () => new Date();
 
   const span = (a, b) => { let x = toMin(b) - toMin(a); if (x < 0) x += 1440; return x; };
@@ -84,6 +84,17 @@
   const entry = ds => (S.months[ds.slice(0, 7)] || {})[ds];
   const planFor = ds => (S.plans[ymd(monday(parse(ds)))] || {})[ds];
 
+  // Alternance : une semaine de cours compte un forfait (35 h par défaut, voir Réglages), réparti du lundi
+  // au vendredi. Un jour pointé ou marqué off garde ses vraies heures ; le forfait ne compte qu'une fois le jour arrivé.
+  // Option « alternance » désactivée : les semaines de cours enregistrées sont gardées mais ne comptent pas.
+  const altOn = () => !!S.settings.alt;
+  const isSchoolDay = ds => { const wd = parse(ds).getDay(); return altOn() && wd >= 1 && wd <= 5 && !!S.school[ymd(monday(parse(ds)))]; };
+  const schoolPerDay = () => Math.round((+S.settings.school || 0) * 60 / 5);
+  const hasEntry = e => !!e && (!!e.off || !!e.in);
+  const schoolCounts = ds => isSchoolDay(ds) && !hasEntry(entry(ds)) && ds <= ymd(now());
+  function dayWorked(ds, live) { const e = entry(ds); return hasEntry(e) ? worked(e, live) : schoolCounts(ds) ? schoolPerDay() : null; }
+  const workPlan = ds => isSchoolDay(ds) ? null : planFor(ds); // planning de travail, sans les jours de cours
+
   // ---------- Stockage (serveur, avec copie sur l'appareil) ----------
   // Chaque document (un mois, une semaine de planning, les réglages) est envoyé au serveur.
   // Tant qu'un envoi n'a pas abouti (réseau coupé en cuisine, par exemple), il reste dans le
@@ -93,12 +104,17 @@
   function applyDoc(id, data) {
     if (id === "settings") S.settings = { ...DEFAULTS, ...(data || {}) };
     else if (id.startsWith("m-")) { if (data && data.days && Object.keys(data.days).length) S.months[id.slice(2)] = data.days; else delete S.months[id.slice(2)]; }
-    else if (id.startsWith("p-")) { if (data && data.days && Object.keys(data.days).length) S.plans[id.slice(2)] = data.days; else delete S.plans[id.slice(2)]; }
+    else if (id.startsWith("p-")) {
+      const k = id.slice(2);
+      if (data && data.days && Object.keys(data.days).length) S.plans[k] = data.days; else delete S.plans[k];
+      if (data && data.school) S.school[k] = true; else delete S.school[k];
+    }
   }
   function bodyOf(id) {
     if (id === "settings") return { ...S.settings };
     if (id.startsWith("m-")) return { days: S.months[id.slice(2)] || {} };
-    return { days: S.plans[id.slice(2)] || {} };
+    const k = id.slice(2);
+    return { days: S.plans[k] || {}, ...(S.school[k] ? { school: true } : {}) };
   }
   const lsRead = k => { try { return JSON.parse(localStorage.getItem(k) || "{}") || {}; } catch { return {}; } };
   const lsWrite = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -107,7 +123,7 @@
   function saveCache() {
     const all = { settings: bodyOf("settings") };
     Object.keys(S.months).forEach(k => all["m-" + k] = bodyOf("m-" + k));
-    Object.keys(S.plans).forEach(k => all["p-" + k] = bodyOf("p-" + k));
+    new Set([...Object.keys(S.plans), ...Object.keys(S.school)]).forEach(k => all["p-" + k] = bodyOf("p-" + k));
     lsWrite(cacheKey(), all);
   }
 
@@ -167,7 +183,7 @@
     const firstOpen = !me;
     me = r ? r.user.username : last; offline = !r;
     try { localStorage.setItem("pointeuse-user", me); } catch {}
-    S.months = {}; S.plans = {}; S.settings = { ...DEFAULTS };
+    S.months = {}; S.plans = {}; S.school = {}; S.settings = { ...DEFAULTS };
     Object.entries(r ? r.docs : lsRead(cacheKey())).forEach(([id, d]) => applyDoc(id, d));
     pending = lsRead(pendKey());
     Object.entries(pending).forEach(([id, d]) => applyDoc(id, d));
@@ -272,7 +288,7 @@
   const nowAfter = t => { const r = roundQ(hm(now())); return t && toMin(r) > toMin(t) ? r : ""; };
   // Préremplissage : ce qui est déjà pointé aujourd'hui, sinon le planning, sinon l'heure qu'il est.
   function fillBadgeSelects() {
-    const ds = ymd(now()), e = entry(ds) || {}, p = (planFor(ds) && !planFor(ds).off) ? planFor(ds) : {};
+    const ds = ymd(now()), e = entry(ds) || {}, p = (workPlan(ds) && !workPlan(ds).off) ? workPlan(ds) : {};
     cutOn = !!(e.in2 || (!e.out2 && p.start2 && (!e.out || e.out === p.end)));
     const vIn = e.in || p.start || lastArrival();
     let vOut, vIn2 = "", vOut2 = "";
@@ -312,13 +328,14 @@
       : cutOn && !b.in2 ? `Premier service : <b>${dur(worked(b))}</b>. Vous pourrez ajouter la reprise plus tard.`
       : `Temps travaillé : <b>${dur(worked(b))}</b>${b.in2 ? ` (${timesText(b)})` : ""}`;
     $("bSave").disabled = !!err;
-    $("bStatus").textContent = e.off ? "Aujourd'hui est marqué comme jour off." : e.in ? `Déjà enregistré aujourd'hui : ${timesText(e)}.` : "";
+    $("bStatus").textContent = e.off ? "Aujourd'hui est marqué comme jour off." : e.in ? `Déjà enregistré aujourd'hui : ${timesText(e)}.`
+      : isSchoolDay(ymd(now())) ? `Semaine de cours : aujourd'hui compte ${dur(schoolPerDay())} automatiquement. Pointez seulement si vous travaillez quand même.` : "";
   }
   ["bInSel", "bOutSel", "bIn2Sel", "bOut2Sel"].forEach(id => $(id).addEventListener("change", () => { badgeTouched = true; renderBadge(); }));
   $("bCut").onclick = () => {
     // Ajouter : l'heure de départ choisie devient la fin du second service. Retirer : l'inverse.
     const vIn = $("bInSel").value, vOut = $("bOutSel").value, vOut2 = $("bOut2Sel").value;
-    const p = planFor(ymd(now())) || {};
+    const p = workPlan(ymd(now())) || {};
     cutOn = !cutOn; badgeTouched = true;
     if (cutOn) setBadgeValues(vIn, p.start2 ? p.end || "" : "", p.start2 || "", vOut || p.end2 || "");
     else setBadgeValues(vIn, vOut2 || vOut, "", "");
@@ -358,68 +375,78 @@
 
   // ---------- Tableau de bord ----------
   function monthStats(key) {
-    const days = S.months[key] || {}; let tot = 0, n = 0, off = 0, plan = 0, real = 0;
-    const today = ymd(now());
-    Object.entries(days).forEach(([ds, e]) => { if (e.off) off++; const w = worked(e); if (w != null) { tot += w; n++; } });
-    // écart : jours passés (jusqu'à aujourd'hui) ayant un planning
-    const [y, m] = key.split("-").map(Number); const last = new Date(y, m, 0).getDate();
-    for (let i = 1; i <= last; i++) { const ds = `${key}-${pad(i)}`; if (ds > today) break; const p = planFor(ds); if (!p) continue; const pm = planned(p) || 0; plan += pm; real += worked(days[ds]) || 0; }
-    return { tot, n, off, plan, real };
+    const [y, m] = key.split("-").map(Number), last = new Date(y, m, 0).getDate(), today = ymd(now());
+    let tot = 0, work = 0, n = 0, off = 0, school = 0, plan = 0, real = 0;
+    for (let i = 1; i <= last; i++) {
+      const ds = `${key}-${pad(i)}`, e = entry(ds);
+      if (e && e.off) off++;
+      if (hasEntry(e)) { const w = worked(e); if (w != null) { tot += w; work += w; n++; } }
+      else if (schoolCounts(ds)) { tot += schoolPerDay(); school++; }
+      // écart : jours passés (jusqu'à aujourd'hui) ayant un planning de travail
+      const p = workPlan(ds);
+      if (ds > today || !p) continue;
+      plan += planned(p) || 0; real += worked(e) || 0;
+    }
+    return { tot, work, n, off, school, plan, real };
   }
   function renderDash() {
-    const d = now(), ds = ymd(d), e = entry(ds) || {}, p = planFor(ds);
+    const d = now(), ds = ymd(d), e = entry(ds) || {}, p = workPlan(ds), schoolToday = !hasEntry(e) && isSchoolDay(ds);
     $("tIn").textContent = e.in || "—"; $("tOut").textContent = (e.in2 ? e.out2 : e.out) || "—";
-    const w = worked(e, true);
+    const w = dayWorked(ds, true);
     $("tWork").textContent = e.off ? "Off" : dur(w);
     // En coupure : premier service terminé, reprise prévue au planning mais pas encore pointée.
     const inCut = e.in && e.out && !e.in2 && p && p.start2 && hm(d) < p.end2;
-    $("todayChip").innerHTML = e.off ? '<span class="chip off">Jour off</span>' : openShift(e) ? '<span class="chip open">En poste</span>' : inCut ? '<span class="chip open">En coupure</span>' : e.in ? '<span class="chip in">Terminée</span>' : '<span class="chip miss">Pas pointé</span>';
+    $("todayChip").innerHTML = e.off ? '<span class="chip off">Jour off</span>' : openShift(e) ? '<span class="chip open">En poste</span>' : inCut ? '<span class="chip open">En coupure</span>' : schoolToday ? '<span class="chip school">Cours</span>' : e.in ? '<span class="chip in">Terminée</span>' : '<span class="chip miss">Pas pointé</span>';
     const cut = e.in2 ? `Coupure ${e.out} – ${e.in2} · ` : "";
-    $("tPlan").textContent = cut + (p ? (p.off ? "Prévu : repos" : `Prévu : ${planText(p)} (${dur(planned(p))})`) : "Pas de planning pour aujourd'hui.");
+    $("tPlan").textContent = schoolToday ? `Semaine de cours : ${dur(schoolPerDay())} comptées aujourd'hui.` : cut + (p ? (p.off ? "Prévu : repos" : `Prévu : ${planText(p)} (${dur(planned(p))})`) : "Pas de planning pour aujourd'hui.");
 
     const key = ym(d), st = monthStats(key);
     $("mTitle").textContent = fr(d, { month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase());
     $("mTotal").textContent = dur(st.tot); $("mDays").textContent = st.n; $("mOff").textContent = st.off;
-    $("mAvg").textContent = st.n ? dur(st.tot / st.n) : "—";
+    $("mAvg").textContent = st.n ? dur(st.work / st.n) : "—";
+    $("mSchoolBox").hidden = !st.school; $("mSchool").textContent = st.school;
     const dl = st.real - st.plan; $("mDelta").textContent = st.plan ? (dl >= 0 ? "+" : "") + dur(dl) : "—";
     $("mDelta").className = "v " + (st.plan ? (dl >= 0 ? "delta-pos" : "delta-neg") : "");
 
     const mon = monday(d); let wt = 0; const rows = [];
     let max = 600;
-    for (let i = 0; i < 7; i++) { const x = ymd(addDays(mon, i)); max = Math.max(max, worked(entry(x), x === ds) || 0, planned(planFor(x)) || 0); }
+    for (let i = 0; i < 7; i++) { const x = ymd(addDays(mon, i)); max = Math.max(max, dayWorked(x, x === ds) || 0, planned(workPlan(x)) || 0); }
     for (let i = 0; i < 7; i++) {
-      const x = addDays(mon, i), xs = ymd(x), ex = entry(xs), wm = worked(ex, xs === ds), pm = planned(planFor(xs));
+      const x = addDays(mon, i), xs = ymd(x), ex = entry(xs), wm = dayWorked(xs, xs === ds), pm = planned(workPlan(xs));
+      const sc = !hasEntry(ex) && isSchoolDay(xs);
       wt += wm || 0;
       rows.push(`<div class="wb ${ex && ex.off ? "off" : ""} ${xs === ds ? "today" : ""}">
-        <div class="h">${wm ? dur(wm).replace(" h ", "h") : ex && ex.off ? "off" : ""}</div>
-        <div class="track">${wm ? `<div class="fill" style="height:${(wm / max) * 100}%"></div>` : ""}${pm ? `<div class="plan" style="bottom:${(pm / max) * 100}%"></div>` : ""}</div>
+        <div class="h">${wm ? dur(wm).replace(" h ", "h") : ex && ex.off ? "off" : sc ? "cours" : ""}</div>
+        <div class="track">${wm ? `<div class="fill ${sc ? "school" : ""}" style="height:${(wm / max) * 100}%"></div>` : ""}${pm ? `<div class="plan" style="bottom:${(pm / max) * 100}%"></div>` : ""}</div>
         <div class="d">${fr(x, { weekday: "short" }).replace(".", "")}</div></div>`);
     }
     $("wBars").innerHTML = rows.join("");
+    $("legSchool").hidden = !(altOn() && S.school[ymd(mon)]);
     $("wTitle").textContent = `Semaine ${isoWeek(d)}`;
     const target = +S.settings.weekly * 60;
     $("wTotal").innerHTML = `${dur(wt)} <span style="color:var(--muted)">/ ${dur(target)}</span>`;
 
-    const nm = addDays(mon, 7), plan = S.plans[ymd(nm)];
-    $("nTitle").textContent = `Semaine prochaine · S${isoWeek(nm)}`;
-    if (!plan || !Object.keys(plan).length) {
+    const nm = addDays(mon, 7), plan = S.plans[ymd(nm)] || {}, nSchool = altOn() && !!S.school[ymd(nm)];
+    $("nTitle").textContent = `Semaine prochaine · S${isoWeek(nm)}${nSchool ? " · cours" : ""}`;
+    if (!Object.keys(plan).length && !nSchool) {
       $("nBody").innerHTML = `<p style="margin:0;color:var(--muted)">Le planning du ${fr(nm, { day: "numeric", month: "long" })} au ${fr(addDays(nm, 6), { day: "numeric", month: "long" })} n'est pas encore renseigné.</p>`;
       $("nEdit").textContent = "Renseigner le planning"; $("nEdit").className = "btn primary";
     } else {
       let tot = 0; const r = [];
-      for (let i = 0; i < 7; i++) { const x = addDays(nm, i), p = plan[ymd(x)]; const pm = planned(p); tot += pm || 0;
-        r.push(`<div><span class="num" style="text-transform:capitalize">${dayName(x)}</span><span class="num">${p ? (p.off ? '<span class="chip off">Repos</span>' : planText(p)) : '<span style="color:var(--muted)">—</span>'}</span><span class="num">${pm ? dur(pm) : ""}</span></div>`); }
+      for (let i = 0; i < 7; i++) { const x = addDays(nm, i), xs = ymd(x), p = workPlan(xs), sc = isSchoolDay(xs), pm = sc ? schoolPerDay() : planned(p); tot += pm || 0;
+        r.push(`<div><span class="num" style="text-transform:capitalize">${dayName(x)}</span><span class="num">${sc ? '<span class="chip school">Cours</span>' : p ? (p.off ? '<span class="chip off">Repos</span>' : planText(p)) : '<span style="color:var(--muted)">—</span>'}</span><span class="num">${pm ? dur(pm) : ""}</span></div>`); }
       $("nBody").innerHTML = `<div class="plan-mini">${r.join("")}</div><div class="ptotal"><span>Total prévu</span><span class="num">${dur(tot)}</span></div>`;
       $("nEdit").textContent = "Modifier le planning"; $("nEdit").className = "btn";
     }
   }
-  $("nEdit").onclick = () => { pWeek = addDays(monday(now()), 7); pDraft = null; setTab("plan"); };
+  $("nEdit").onclick = () => { pWeek = addDays(monday(now()), 7); pDraft = null; pSchoolDraft = null; setTab("plan"); };
 
   // ---------- Historique ----------
   let hMonth = new Date(now().getFullYear(), now().getMonth(), 1), openDay = null;
   $("hPrev").onclick = () => { hMonth = new Date(hMonth.getFullYear(), hMonth.getMonth() - 1, 1); openDay = null; render(); };
   $("hNext").onclick = () => { hMonth = new Date(hMonth.getFullYear(), hMonth.getMonth() + 1, 1); openDay = null; render(); };
   function statusChip(e, ds) {
+    if (!hasEntry(e) && isSchoolDay(ds)) return '<span class="chip school">Cours</span>';
     if (e && e.off) return '<span class="chip off">Off</span>';
     if (openShift(e)) return ds === ymd(now()) ? '<span class="chip open">En poste</span>' : '<span class="chip miss">Départ ?</span>';
     if (e && e.in) return '<span class="chip in">Pointé</span>';
@@ -433,11 +460,12 @@
     let total = 0, wk = 0, wkp = 0;
     const lastDay = key === ym(now()) ? now().getDate() : last;
     for (let i = 1; i <= lastDay; i++) {
-      const d = new Date(y, m, i), ds = ymd(d), e = entry(ds), p = planFor(ds), w = worked(e, ds === today), pm = planned(p);
+      const d = new Date(y, m, i), ds = ymd(d), e = entry(ds), p = workPlan(ds), w = dayWorked(ds, ds === today), pm = planned(p);
+      const sc = !hasEntry(e) && isSchoolDay(ds);
       const we = d.getDay() === 0 || d.getDay() === 6;
       total += w || 0; wk += w || 0; wkp += pm || 0;
       out.push(`<button class="hrow day ${we ? "weekend" : ""}" data-day="${ds}" aria-expanded="${openDay === ds}">
-        <span class="dn">${dayName(d)}<span class="times-m num">${e && e.in ? timesText(e) : ""}</span></span>
+        <span class="dn">${dayName(d)}<span class="times-m num">${e && e.in ? timesText(e) : sc ? "Cours" : ""}</span></span>
         <span class="t">${e && e.in ? e.in + (e.in2 ? `<br>${e.in2}` : "") : ""}</span><span class="t">${e && e.in ? (e.out || "") + (e.in2 ? `<br>${e.out2 || "…"}` : "") : ""}</span>
         <span class="t">${w != null ? dur(w) : ""}</span><span class="t">${pm != null ? dur(pm) : p && p.off ? "repos" : ""}</span><span>${statusChip(e, ds)}</span></button>`);
       if (openDay === ds) out.push(editorHtml(ds, e || {}));
@@ -453,6 +481,7 @@
   }
   function editorHtml(ds, e) {
     return `<div class="editor" data-ed="${ds}">
+      ${isSchoolDay(ds) ? `<p class="hint">Jour de cours : ${dur(schoolPerDay())} comptées tant que rien n'est pointé ce jour-là.</p>` : ""}
       <div class="fields">
         <div class="field"><label for="eIn-h">Arrivée</label>${slotSelect("eIn", e.in || "")}</div>
         <div class="field"><label for="eOut-h" id="eOutLbl">${e.in2 ? "Coupure" : "Départ"}</label>${slotSelect("eOut", e.out || "")}</div>
@@ -490,11 +519,11 @@
     };
   }
   $("hExport").onclick = () => {
-    const key = ym(hMonth), rows = [["Date", "Arrivée", "Départ", "Reprise", "Départ 2", "Travaillé (h)", "Jour off", "Prévu (h)", "Note"]];
+    const key = ym(hMonth), rows = [["Date", "Arrivée", "Départ", "Reprise", "Départ 2", "Travaillé (h)", "Jour off", "Cours", "Prévu (h)", "Note"]];
     const [y, m] = key.split("-").map(Number), last = new Date(y, m, 0).getDate();
-    for (let i = 1; i <= last; i++) { const ds = `${key}-${pad(i)}`, e = entry(ds), p = planFor(ds); if (!e && !p) continue;
-      const w = worked(e), pm = planned(p);
-      rows.push([ds, e?.in || "", e?.out || "", e?.in2 || "", e?.out2 || "", w != null ? (w / 60).toFixed(2).replace(".", ",") : "", e?.off ? "oui" : "", pm != null ? (pm / 60).toFixed(2).replace(".", ",") : "", (e?.note || "").replace(/;/g, ",")]); }
+    for (let i = 1; i <= last; i++) { const ds = `${key}-${pad(i)}`, e = entry(ds), p = workPlan(ds), sc = schoolCounts(ds); if (!e && !p && !sc) continue;
+      const w = dayWorked(ds), pm = planned(p);
+      rows.push([ds, e?.in || "", e?.out || "", e?.in2 || "", e?.out2 || "", w != null ? (w / 60).toFixed(2).replace(".", ",") : "", e?.off ? "oui" : "", sc ? "oui" : "", pm != null ? (pm / 60).toFixed(2).replace(".", ",") : "", (e?.note || "").replace(/;/g, ",")]); }
     // BOM UTF-8 + point-virgule : Excel en français ouvre le fichier correctement.
     const blob = new Blob(["\ufeff" + rows.map(r => r.join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `heures-${key}.csv`;
@@ -504,17 +533,18 @@
   // ---------- Relevé à envoyer (image) ----------
   // Une fiche lisible sur un téléphone : chaque jour du mois, le total de chaque semaine et le total du mois.
   // Dessinée sur un canvas, toujours en clair (elle part chez le patron, quel que soit le thème de l'appareil).
-  const RC = { bg: "#ffffff", ink: "#16233b", muted: "#5b667a", line: "#dfe3ea", band: "#eef1f5", accent: "#2346c9", off: "#a2610a" };
+  const RC = { bg: "#ffffff", ink: "#16233b", muted: "#5b667a", line: "#dfe3ea", band: "#eef1f5", accent: "#2346c9", off: "#a2610a", school: "#6b3fb5" };
   const RF = { display: '"Bricolage Grotesque", system-ui, sans-serif', body: '"IBM Plex Sans", system-ui, sans-serif', mono: '"IBM Plex Mono", ui-monospace, monospace' };
   async function buildReport(key) {
     try { await Promise.all(['700 30px "Bricolage Grotesque"', '400 15px "IBM Plex Sans"', '600 15px "IBM Plex Sans"', '500 15px "IBM Plex Mono"', '600 15px "IBM Plex Mono"'].map(f => document.fonts.load(f))); } catch {}
     const [y, m] = key.split("-").map(Number), monthEnd = new Date(y, m, 0).getDate();
     const partial = key === ym(now()), lastDay = partial ? now().getDate() : monthEnd;
-    const rows = []; let total = 0, wk = 0, nDays = 0, nOff = 0;
+    const rows = []; let total = 0, work = 0, wk = 0, nDays = 0, nOff = 0, nSchool = 0;
     for (let i = 1; i <= lastDay; i++) {
-      const d = new Date(y, m - 1, i), ds = ymd(d), e = entry(ds), w = worked(e);
-      total += w || 0; wk += w || 0; if (w != null) nDays++; if (e && e.off) nOff++;
-      rows.push({ kind: "day", d, e, w });
+      const d = new Date(y, m - 1, i), ds = ymd(d), e = entry(ds), w = dayWorked(ds), sc = schoolCounts(ds);
+      total += w || 0; wk += w || 0; if (e && e.off) nOff++;
+      if (sc) nSchool++; else if (w != null) { nDays++; work += w; }
+      rows.push({ kind: "day", d, e, w, sc });
       if (d.getDay() === 0 || i === lastDay) { rows.push({ kind: "week", n: isoWeek(d), w: wk }); wk = 0; }
     }
     const W = 720, P = 36, RH = 36, WH = 34, HEAD = 168, TH = 34, FOOT = 150;
@@ -551,9 +581,10 @@
         text(dur(r.w), xW - 10, yy + WH / 2, `600 15px ${RF.mono}`, RC.ink, "right");
         yy += WH; continue;
       }
-      const { d, e, w } = r, we = d.getDay() === 0 || d.getDay() === 6, mid = yy + RH / 2;
+      const { d, e, w, sc } = r, we = d.getDay() === 0 || d.getDay() === 6, mid = yy + RH / 2;
       text(dayName(d).replace(/^./, s => s.toUpperCase()), P, mid, `${we ? 400 : 500} 15px ${RF.body}`, we ? RC.muted : RC.ink);
-      if (e && e.off) text("Jour off", xT, mid, `600 15px ${RF.body}`, RC.off);
+      if (sc) text("Cours (alternance)", xT, mid, `600 15px ${RF.body}`, RC.school);
+      else if (e && e.off) text("Jour off", xT, mid, `600 15px ${RF.body}`, RC.off);
       else if (e && e.in) {
         c.font = `500 15px ${RF.mono}`; const t = timesText(e), tw = c.measureText(t).width;
         text(t, xT, mid, c.font, RC.ink);
@@ -569,8 +600,10 @@
     text("Total du mois", P, yy, `700 20px ${RF.display}`, RC.ink);
     text(dur(total), xW, yy, `600 24px ${RF.mono}`, RC.accent, "right");
     yy += 32;
-    const parts = [`${nDays} jour${nDays > 1 ? "s" : ""} travaillé${nDays > 1 ? "s" : ""}`, `${nOff} jour${nOff > 1 ? "s" : ""} off`];
-    if (nDays) parts.push(`moyenne ${dur(total / nDays)} par jour`);
+    const parts = [`${nDays} jour${nDays > 1 ? "s" : ""} travaillé${nDays > 1 ? "s" : ""}`];
+    if (nSchool) parts.push(`${nSchool} jour${nSchool > 1 ? "s" : ""} de cours (${dur(schoolPerDay())} chacun)`);
+    parts.push(`${nOff} jour${nOff > 1 ? "s" : ""} off`);
+    if (nDays && !nSchool) parts.push(`moyenne ${dur(work / nDays)} par jour`);
     text(parts.join(" · "), P, yy, `400 14px ${RF.body}`, RC.muted);
     yy += 26;
     text(`Établi le ${fr(now(), { day: "numeric", month: "long", year: "numeric" })} avec Pointeuse · pause comprise dans les horaires`, P, yy, `400 12px ${RF.body}`, RC.muted);
@@ -609,19 +642,29 @@
   };
 
   // ---------- Planning ----------
-  let pWeek = addDays(monday(now()), 7), pDraft = null;
+  let pWeek = addDays(monday(now()), 7), pDraft = null, pSchoolDraft = null;
   const pKey = () => ymd(pWeek);
-  $("pPrev").onclick = () => { pWeek = addDays(pWeek, -7); pDraft = null; render(); };
-  $("pNext").onclick = () => { pWeek = addDays(pWeek, 7); pDraft = null; render(); };
+  $("pPrev").onclick = () => { pWeek = addDays(pWeek, -7); pDraft = null; pSchoolDraft = null; render(); };
+  $("pNext").onclick = () => { pWeek = addDays(pWeek, 7); pDraft = null; pSchoolDraft = null; render(); };
   function draft() { if (!pDraft) pDraft = JSON.parse(JSON.stringify(S.plans[pKey()] || {})); return pDraft; }
+  const schoolDraft = () => altOn() && (pSchoolDraft ?? !!S.school[pKey()]);
+  $("pSchool").onchange = () => { pSchoolDraft = $("pSchool").checked; renderPlan(); };
   function renderPlan() {
     const mon = pWeek, dr = draft(), thisMon = ymd(monday(now()));
     const rel = pKey() === thisMon ? " · cette semaine" : ymd(addDays(monday(now()), 7)) === pKey() ? " · semaine prochaine" : "";
     $("pTitle").textContent = `Semaine ${isoWeek(mon)}`;
     $("pRange").textContent = `Du ${fr(mon, { weekday: "long", day: "numeric", month: "long" })} au ${fr(addDays(mon, 6), { weekday: "long", day: "numeric", month: "long" })}${rel}`;
-    const r = []; let tot = 0;
+    const r = []; let tot = 0, sch = schoolDraft();
+    $("pSchoolBox").hidden = !altOn(); $("pSchool").checked = sch; $("pSchoolH").textContent = `${+S.settings.school || 0} h`;
     for (let i = 0; i < 7; i++) {
-      const x = addDays(mon, i), ds = ymd(x), p = dr[ds] || {}, pm = planned(p), cut = "start2" in p; tot += pm || 0;
+      const x = addDays(mon, i), ds = ymd(x);
+      if (sch && i < 5) {
+        tot += schoolPerDay();
+        r.push(`<div class="prow school"><span class="dn">${fr(x, { weekday: "long", day: "numeric" })}</span>
+          <span class="schoolcell"><span class="chip school">Cours</span></span><span class="tot num">${dur(schoolPerDay())}</span></div>`);
+        continue;
+      }
+      const p = dr[ds] || {}, pm = planned(p), cut = "start2" in p; tot += pm || 0;
       const dis = p.off ? "disabled" : "";
       r.push(`<div class="prow ${cut ? "cut" : ""}" data-pd="${ds}"><span class="dn">${fr(x, { weekday: "long", day: "numeric" })}</span>
         <span class="a">${slotSelect("ps-" + ds, p.start || "", `aria-label="Début ${ds}" ${dis}`)}</span>
@@ -633,7 +676,7 @@
         <span class="tot num">${pm ? dur(pm) : ""}</span></div>`);
     }
     $("pList").innerHTML = r.join(""); $("pTotal").textContent = dur(tot);
-    $("pList").querySelectorAll(".prow").forEach(row => {
+    $("pList").querySelectorAll(".prow:not(.school)").forEach(row => {
       const ds = row.dataset.pd;
       const upd = () => {
         const val = id => { const el = row.querySelector(`#${id}-${ds}`); return el ? el.value : ""; };
@@ -648,32 +691,40 @@
     });
   }
   $("pCopy").onclick = () => {
-    const prev = S.plans[ymd(addDays(pWeek, -7))];
-    if (!prev || !Object.keys(prev).length) { toast("La semaine précédente n'a pas de planning."); return; }
-    pDraft = {}; Object.entries(prev).forEach(([ds, p]) => { pDraft[ymd(addDays(parse(ds), 7))] = { ...p }; });
+    const prevKey = ymd(addDays(pWeek, -7)), prev = S.plans[prevKey] || {};
+    if (!Object.keys(prev).length && !(altOn() && S.school[prevKey])) { toast("La semaine précédente n'a pas de planning."); return; }
+    pSchoolDraft = altOn() && !!S.school[prevKey]; pDraft = {}; Object.entries(prev).forEach(([ds, p]) => { pDraft[ymd(addDays(parse(ds), 7))] = { ...p }; });
     renderPlan(); toast("Planning copié. Pensez à enregistrer.");
   };
-  $("pClear").onclick = () => { pDraft = {}; renderPlan(); };
+  $("pClear").onclick = () => { pDraft = {}; pSchoolDraft = false; renderPlan(); };
   $("pSave").onclick = () => {
     const day = ds => fr(parse(ds), { weekday: "long" });
+    const sch = schoolDraft();
     for (const [ds, p] of Object.entries(draft())) {
-      if (p.off) continue;
+      if (p.off || (sch && parse(ds).getDay() >= 1 && parse(ds).getDay() <= 5)) continue;
       if (!p.start || !p.end) { toast(`Complétez le début et la fin du ${day(ds)}.`); return; }
       if ("start2" in p && (!p.start2 || !p.end2)) { toast(`Complétez la reprise et la fin du ${day(ds)}, ou décochez « Coupure ».`); return; }
       if (p.start2 && toMin(p.end) >= toMin(p.start) && toMin(p.start2) <= toMin(p.end)) { toast(`Le ${day(ds)}, la reprise doit être après le début de la coupure.`); return; }
     }
-    S.plans[pKey()] = draft(); pDraft = null; persist(docName("p", pKey())); toast("Planning enregistré"); render();
+    S.plans[pKey()] = draft();
+    if (altOn()) { if (sch) S.school[pKey()] = true; else delete S.school[pKey()]; }
+    pDraft = null; pSchoolDraft = null; persist(docName("p", pKey())); toast("Planning enregistré"); render();
   };
 
   // ---------- Réglages ----------
   function renderSet() {
     if (document.activeElement?.id !== "sWeek") $("sWeek").value = S.settings.weekly;
     if (document.activeElement?.id !== "sName") $("sName").value = S.settings.name || "";
+    if (document.activeElement?.id !== "sSchool") $("sSchool").value = S.settings.school ?? 35;
+    if (!setTouched) { $("sAlt").checked = altOn(); $("sSchoolF").hidden = !altOn(); }
   }
+  let setTouched = false;
+  $("sAlt").onchange = () => { setTouched = true; $("sSchoolF").hidden = !$("sAlt").checked; };
   $("sSave").onclick = () => {
     const wk = Math.max(0, Math.min(80, +$("sWeek").value || 0));
     const name = $("sName").value.trim().slice(0, 60);
-    S.settings = { weekly: wk, ...(name ? { name } : {}) }; persist("settings"); toast("Réglages enregistrés"); render();
+    const school = Math.max(0, Math.min(60, +$("sSchool").value || 0));
+    S.settings = { weekly: wk, school, alt: $("sAlt").checked, ...(name ? { name } : {}) }; setTouched = false; persist("settings"); toast("Réglages enregistrés"); render();
   };
 
   // ---------- Rendu ----------
