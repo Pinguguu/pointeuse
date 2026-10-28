@@ -56,7 +56,17 @@ h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; }
 .slot label { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .slot label svg { width: 20px; height: 20px; }
 .slot select, .tsel { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
-.slot select { font-size: 26px; font-weight: 500; padding: 6px 10px; width: 100%; }
+.slot select { font-size: 26px; font-weight: 500; padding: 6px 8px; }
+/* Heure + minutes côte à côte */
+time-pick { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+time-pick > select.tsel { flex: 1 1 0; min-width: 0; width: auto; -webkit-appearance: none; appearance: none;
+  text-align: center; text-align-last: center; padding: 6px 18px 6px 6px;
+  background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%234f5b70' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 7px center; }
+.slot time-pick > select.tsel { font-size: 24px; padding: 8px 18px 8px 6px; }
+time-pick > select.tsel:disabled { opacity: .45; }
+.tsep { font-family: var(--mono); font-weight: 600; color: var(--muted); }
+.slot time-pick, .prow time-pick { display: flex; width: 100%; }
+.slot .tsep { font-size: 24px; }
 .shifts { display: grid; gap: 10px; }
 .badge-cut { justify-self: start; border: 1px dashed var(--line); background: none; color: var(--accent); font-weight: 600; padding: 8px 14px; border-radius: 10px; }
 .badge-cut:hover { border-color: var(--accent); }

@@ -15,6 +15,45 @@
   const fr = (d, o) => d.toLocaleDateString("fr-FR", o);
   const dayName = d => fr(d, { weekday: "short", day: "numeric", month: "short" }).replace(/\./g, "");
 
+  // ---------- Choix d'une heure : une liste pour l'heure, une pour les minutes (au quart d'heure) ----------
+  // <time-pick id="…" value="HH:MM"> se lit et s'écrit comme un champ : .value ("" si vide), .disabled,
+  // et l'évènement « change » des deux listes remonte jusqu'à lui. L'heure peut rester vide (« — »).
+  const QUARTERS = ["00", "15", "30", "45"];
+  class TimePick extends HTMLElement {
+    connectedCallback() {
+      if (this._h) return;
+      const label = this.getAttribute("aria-label") || "";
+      this.removeAttribute("aria-label");
+      this._h = document.createElement("select"); this._m = document.createElement("select");
+      this._h.className = this._m.className = "tsel";
+      if (this.id) this._h.id = this.id + "-h";
+      if (label) { this._h.setAttribute("aria-label", label + ", heure"); this._m.setAttribute("aria-label", label + ", minutes"); }
+      else this._m.setAttribute("aria-label", "Minutes");
+      const sep = document.createElement("span"); sep.className = "tsep"; sep.textContent = ":"; sep.setAttribute("aria-hidden", "true");
+      this.append(this._h, sep, this._m);
+      this._h.innerHTML = `<option value="">—</option>` + Array.from({ length: 24 }, (_, i) => `<option value="${pad(i)}">${pad(i)}</option>`).join("");
+      this._h.addEventListener("change", () => { if (!this._h.value) this._m.value = ""; else if (!this._m.value) this._m.value = "00"; this._sync(); });
+      this.value = this._pending ?? this.getAttribute("value") ?? "";
+      this.disabled = this._dis ?? this.hasAttribute("disabled");
+    }
+    get value() { return this._h ? (this._h.value ? `${this._h.value}:${this._m.value || "00"}` : "") : (this._pending ?? ""); }
+    set value(v) {
+      v = v || "";
+      if (!this._h) { this._pending = v; return; }
+      const [h, m] = v ? v.split(":") : ["", ""];
+      // Une ancienne heure hors quart d'heure (10:07) reste affichée telle quelle.
+      const mins = m && !QUARTERS.includes(m) ? [...QUARTERS, m].sort() : QUARTERS;
+      this._m.innerHTML = `<option value="">--</option>` + mins.map(x => `<option value="${x}">${x}</option>`).join("");
+      this._h.value = h; this._m.value = h ? m : "";
+      this._sync();
+    }
+    get disabled() { return this._h ? this._h.disabled : !!this._dis; }
+    set disabled(d) { this._dis = !!d; if (this._h) { this._h.disabled = !!d; this._sync(); } }
+    focus() { if (this._h) this._h.focus(); else super.focus(); }
+    _sync() { this._m.disabled = this._h.disabled || !this._h.value; }
+  }
+  customElements.define("time-pick", TimePick);
+
   // ---------- État ----------
   const DEFAULTS = { weekly: 35 };
   const S = { months: {}, plans: {}, settings: { ...DEFAULTS } };
@@ -215,14 +254,8 @@
   let tt; function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => t.classList.remove("show"), 2600); }
 
   // ---------- Créneaux de 15 minutes ----------
-  const SLOTS = Array.from({ length: 96 }, (_, i) => `${pad(Math.floor(i / 4))}:${pad((i % 4) * 15)}`);
   const roundQ = t => { const m = Math.round(toMin(t) / 15) * 15 % 1440; return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`; };
-  // Liste déroulante au quart d'heure ; garde une ancienne valeur hors quart d'heure si elle existe.
-  function slotOptions(value, emptyLabel) {
-    const list = value && !SLOTS.includes(value) ? [...SLOTS, value].sort() : SLOTS;
-    return (emptyLabel != null ? `<option value="">${emptyLabel}</option>` : "") + list.map(s => `<option value="${s}" ${s === value ? "selected" : ""}>${s}</option>`).join("");
-  }
-  const slotSelect = (id, value, extra = "") => `<select class="tsel" id="${id}" ${extra}>${slotOptions(value, "—")}</select>`;
+  const slotSelect = (id, value, extra = "") => `<time-pick id="${id}" value="${value}" ${extra}></time-pick>`;
   // Heure d'arrivée habituelle : la plus récente saisie, sinon 09:00.
   function lastArrival() {
     const all = Object.values(S.months).flatMap(m => Object.entries(m)).filter(([, e]) => e.in).sort((a, b) => b[0].localeCompare(a[0]));
@@ -251,10 +284,7 @@
     setBadgeValues(vIn, vOut, vIn2, vOut2);
   }
   function setBadgeValues(vIn, vOut, vIn2, vOut2) {
-    $("bInSel").innerHTML = slotOptions(vIn);
-    $("bOutSel").innerHTML = slotOptions(vOut, cutOn ? "Pas encore" : "Pas encore parti");
-    $("bIn2Sel").innerHTML = slotOptions(vIn2, "Pas encore repris");
-    $("bOut2Sel").innerHTML = slotOptions(vOut2, "Pas encore parti");
+    $("bInSel").value = vIn; $("bOutSel").value = vOut; $("bIn2Sel").value = vIn2; $("bOut2Sel").value = vOut2;
   }
   const badgeEntry = () => {
     const v = id => $(id).value || null;
@@ -424,10 +454,10 @@
   function editorHtml(ds, e) {
     return `<div class="editor" data-ed="${ds}">
       <div class="fields">
-        <div class="field"><label for="eIn">Arrivée</label>${slotSelect("eIn", e.in || "")}</div>
-        <div class="field"><label for="eOut" id="eOutLbl">${e.in2 ? "Coupure" : "Départ"}</label>${slotSelect("eOut", e.out || "")}</div>
-        <div class="field"><label for="eIn2">Reprise <span class="opt">(si coupure)</span></label>${slotSelect("eIn2", e.in2 || "")}</div>
-        <div class="field"><label for="eOut2">Départ</label>${slotSelect("eOut2", e.out2 || "")}</div>
+        <div class="field"><label for="eIn-h">Arrivée</label>${slotSelect("eIn", e.in || "")}</div>
+        <div class="field"><label for="eOut-h" id="eOutLbl">${e.in2 ? "Coupure" : "Départ"}</label>${slotSelect("eOut", e.out || "")}</div>
+        <div class="field"><label for="eIn2-h">Reprise <span class="opt">(si coupure)</span></label>${slotSelect("eIn2", e.in2 || "")}</div>
+        <div class="field"><label for="eOut2-h">Départ</label>${slotSelect("eOut2", e.out2 || "")}</div>
         <label class="check"><input type="checkbox" id="eOff" ${e.off ? "checked" : ""}> Jour off</label>
         <div class="field"><label for="eNote">Note</label><input id="eNote" maxlength="80" value="${(e.note || "").replace(/"/g, "&quot;")}" placeholder="Congé, RTT, formation…"></div>
       </div>
