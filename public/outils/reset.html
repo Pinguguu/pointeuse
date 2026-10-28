@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Réinitialiser un mot de passe</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main id="app">
+  <div class="panel">
+    <h1 style="font-size:24px">Réinitialiser un mot de passe</h1>
+    <p class="hint">Outil pour la personne qui gère la Pointeuse. Il fabrique une requête SQL à exécuter dans la console de la base D1. Le mot de passe ne quitte pas ce navigateur : seule son empreinte apparaît dans la requête.</p>
+    <form class="stack" id="f" novalidate>
+      <div class="field"><label for="u">Identifiant de la personne</label>
+        <input class="wide" id="u" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+      <div class="field"><label for="p">Nouveau mot de passe (8 caractères minimum)</label>
+        <input class="wide" id="p" type="text" autocomplete="off" spellcheck="false"></div>
+      <p class="err" id="err" role="alert" hidden></p>
+      <div class="actions"><button class="btn primary" type="submit">Générer la requête</button></div>
+    </form>
+  </div>
+  <div class="panel" id="out" hidden>
+    <h2>Requête à exécuter</h2>
+    <textarea id="sql" readonly rows="6" aria-label="Requête SQL" style="width:100%;font-family:var(--mono);font-size:12px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--paper)"></textarea>
+    <div class="actions"><button class="btn" id="copy" type="button">Copier la requête</button></div>
+    <ol style="margin:0;padding-left:20px">
+      <li>Cloudflare, puis <strong>Storage &amp; databases</strong>, <strong>D1</strong>, <strong>pointeuse</strong>, onglet <strong>Console</strong>.</li>
+      <li>Collez la requête et exécutez-la.</li>
+      <li>Donnez le nouveau mot de passe à la personne : elle pourra le changer dans <strong>Réglages</strong>.</li>
+    </ol>
+  </div>
+</main>
+<script src="/outils/reset.js"></script>
+</body>
+</html>

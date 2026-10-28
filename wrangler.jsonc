@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Ce nom doit être celui du Worker créé dans Cloudflare (par défaut : le nom du dépôt GitHub).
+  "name": "pointeuse",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-14",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    // Les requêtes /api/* passent par le Worker, tout le reste est servi directement.
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pointeuse",
+      // À REMPLACER par l'identifiant de votre base D1 (voir README.md, étape 1).
+      // En développement local, cette valeur d'exemple suffit.
+      "database_id": "COLLER-ICI-L-IDENTIFIANT-DE-LA-BASE-D1"
+    }
+  ],
+  "observability": { "enabled": true }
+}
