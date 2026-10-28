@@ -16,7 +16,7 @@
       "database_name": "pointeuse",
       // À REMPLACER par l'identifiant de votre base D1 (voir README.md, étape 1).
       // En développement local, cette valeur d'exemple suffit.
-      "database_id": "COLLER-ICI-L-IDENTIFIANT-DE-LA-BASE-D1"
+      "database_id": "6e7a10d2-835d-4861-a806-5446b84a141c"
     }
   ],
   "observability": { "enabled": true }
